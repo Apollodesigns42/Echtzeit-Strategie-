@@ -165,3 +165,7 @@ select, input[type=text] { background: #0d1114; color: var(--text); border: 1px 
 .ctab.sel { background: #222a32; box-shadow: 0 0 12px rgba(255,255,255,.06); }
 .ctab b { display: block; font-size: 15px; }
 .ctab span { font-size: 12px; color: var(--muted); }
+.loadbox { display: flex; align-items: center; gap: 14px; padding: 18px 28px; background: #12171c; border: 1px solid var(--line); border-top: 3px solid var(--accent); font-size: 16px; letter-spacing: 1px; }
+.spinner { width: 22px; height: 22px; border: 3px solid #2c353e; border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading { z-index: 60; }

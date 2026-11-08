@@ -56,7 +56,18 @@
       // Gelände
       const ix = Math.max(0, Math.floor(vx0)), iy = Math.max(0, Math.floor(vy0));
       const iw = Math.min(m.w * T, Math.ceil(vx1)) - ix, ih = Math.min(m.h * T, Math.ceil(vy1)) - iy;
-      if (iw > 0 && ih > 0) ctx.drawImage(m.terrainCanvas, ix, iy, iw, ih, ix, iy, iw, ih);
+      if (iw > 0 && ih > 0) {
+        // Wasser nur im Bereich sichtbarer Wasserfelder (plus Uferrand)
+        let wx0 = 1e9, wy0 = 1e9, wx1 = -1, wy1 = -1;
+        const ttx0 = Math.max(0, Math.floor(ix / T) - 1), tty0 = Math.max(0, Math.floor(iy / T) - 1);
+        const ttx1 = Math.min(m.w - 1, Math.floor((ix + iw) / T) + 1), tty1 = Math.min(m.h - 1, Math.floor((iy + ih) / T) + 1);
+        for (let y = tty0; y <= tty1; y++) { const row = y * m.w; for (let x = ttx0; x <= ttx1; x++) if (m.type[row + x] === 2) { if (x < wx0) wx0 = x; if (x > wx1) wx1 = x; if (y < wy0) wy0 = y; if (y > wy1) wy1 = y; } }
+        if (wx1 >= 0) {
+          const ax = Math.max(ix, (wx0 - 1) * T), ay = Math.max(iy, (wy0 - 1) * T), bx = Math.min(ix + iw, (wx1 + 2) * T), by = Math.min(iy + ih, (wy1 + 2) * T);
+          this.drawWater(ctx, ax, ay, bx - ax, by - ay, t);
+        }
+        ctx.drawImage(m.terrainCanvas, ix, iy, iw, ih, ix, iy, iw, ih);
+      }
       const tx0 = Math.max(0, Math.floor(vx0 / T) - 1), ty0 = Math.max(0, Math.floor(vy0 / T) - 1);
       const tx1 = Math.min(m.w - 1, Math.ceil(vx1 / T) + 1), ty1 = Math.min(m.h - 1, Math.ceil(vy1 / T) + 2);
       const exp = g.explored, vis = g.vis;
@@ -129,49 +140,99 @@
       }
       // UI in Weltkoordinaten
       if (ui) this.drawWorldUI(ctx, ui, realDt);
+      // Vignette & leichte Farbkorrektur
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (!this.vig || this.vig.w !== this.cv.width || this.vig.h !== this.cv.height) {
+        const vc = document.createElement('canvas'); vc.width = this.cv.width; vc.height = this.cv.height; const v = vc.getContext('2d');
+        const gr = v.createRadialGradient(vc.width / 2, vc.height / 2, Math.min(vc.width, vc.height) * 0.35, vc.width / 2, vc.height / 2, Math.max(vc.width, vc.height) * 0.75);
+        gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.42)'); v.fillStyle = gr; v.fillRect(0, 0, vc.width, vc.height);
+        this.vig = { cv: vc, w: vc.width, h: vc.height };
+      }
+      ctx.drawImage(this.vig.cv, 0, 0);
+    }
+    drawWater(ctx, x, y, w, h, t) {
+      const m = this.g.map, B = m.biome;
+      if (!this.waterPat) {
+        this.waterPat = ctx.createPattern(m.waterTex, 'repeat');
+      }
+      ctx.fillStyle = B.water; ctx.fillRect(x, y, w, h);
+      // Tiefenverlauf
+      const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(255,255,255,0.04)'); g.addColorStop(1, 'rgba(0,0,0,0.12)');
+      ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+      const lava = !!B.lava;
+      for (let layer = 0; layer < 2; layer++) {
+        const ox = (layer ? -t * 9 : t * 6) % 256, oy = (layer ? t * 4 : t * 7) % 256;
+        ctx.save();
+        ctx.translate(ox, oy);
+        if (layer) { ctx.globalCompositeOperation = lava ? 'lighter' : 'source-over'; ctx.globalAlpha = lava ? 0.55 : 0.5; }
+        else { ctx.globalAlpha = lava ? 0.8 : 0.7; if (lava) ctx.globalCompositeOperation = 'lighter'; }
+        ctx.fillStyle = this.waterPat; ctx.fillRect(x - ox, y - oy, w, h);
+        ctx.restore();
+      }
+      if (lava) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.12 + 0.06 * Math.sin(t * 1.3); ctx.fillStyle = '#ff7a1a'; ctx.fillRect(x, y, w, h); ctx.restore(); }
     }
     drawEffects(ctx, inView) {
-      const g = this.g;
+      const g = this.g, GX = RTS.gfx;
+      const EX = GX.explosionFrames(), SM = GX.smokePuffs();
       for (const e of g.effects) {
         if (e.x != null && !inView(e.x, e.y, 60)) continue;
         const f = e.life / e.max;
         switch (e.k) {
           case 'p': {
             const s = e.size + (e.grow || 0) * (1 - f);
-            if (e.add) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = f; }
-            else ctx.globalAlpha = Math.min(1, f * 1.5);
-            ctx.fillStyle = e.c; ctx.beginPath(); ctx.arc(e.x, e.y, s, 0, 7); ctx.fill();
-            ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+            if (e.smoke) {
+              ctx.globalAlpha = Math.min(1, f * 1.4) * 0.75;
+              if (e.v == null) { const m = /rgba?\((\d+)/.exec(e.c || ''); e.v = Math.floor(Math.random() * 4) + (m && +m[1] < 100 ? 4 : 0); }
+              const spr = SM[e.v];
+              ctx.save(); ctx.translate(e.x, e.y); ctx.rotate((e.rot = (e.rot || Math.random() * 6) + 0.004));
+              ctx.drawImage(spr, -s * 1.3, -s * 1.3, s * 2.6, s * 2.6);
+              ctx.restore();
+              // dunkle Tönung
+              ctx.globalAlpha = 1;
+            } else if (e.add) {
+              ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = f;
+              ctx.drawImage(GX.flare(e.c), e.x - s * 2.2, e.y - s * 2.2, s * 4.4, s * 4.4);
+              ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+            } else {
+              ctx.globalAlpha = Math.min(1, f * 1.5);
+              ctx.fillStyle = e.c; ctx.beginPath(); ctx.arc(e.x, e.y, s, 0, 7); ctx.fill();
+              ctx.globalAlpha = 1;
+            }
             break;
           }
           case 'explo': {
-            const r = e.r * (1.2 - f * 0.6);
-            ctx.globalCompositeOperation = 'lighter';
-            const gr = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, r);
-            if (e.kind === 'acid') { gr.addColorStop(0, `rgba(230,255,180,${f})`); gr.addColorStop(0.5, `rgba(130,220,60,${f * 0.7})`); }
-            else { gr.addColorStop(0, `rgba(255,250,220,${f})`); gr.addColorStop(0.4, `rgba(255,170,60,${f * 0.8})`); }
-            gr.addColorStop(1, 'rgba(120,30,0,0)');
-            ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, 7); ctx.fill();
-            ctx.globalCompositeOperation = 'source-over';
+            const fi = Math.min(EX.length - 1, Math.floor((1 - f) * EX.length));
+            const r = e.r * 2.1;
+            if (e.kind === 'acid') { ctx.save(); ctx.filter = 'hue-rotate(80deg) saturate(1.3)'; }
+            ctx.drawImage(EX[fi], e.x - r, e.y - r, r * 2, r * 2);
+            if (e.kind === 'acid') ctx.restore();
+            // Lichtschein am Boden
+            if (f > 0.5) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = (f - 0.5) * 1.2; ctx.drawImage(GX.flare(e.kind === 'acid' ? '#a3e635' : '#fb923c'), e.x - r * 1.6, e.y - r * 1.6, r * 3.2, r * 3.2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
             break;
           }
           case 'flash': {
             ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = f;
-            ctx.fillStyle = e.c || '#fff7c2'; ctx.beginPath(); ctx.arc(e.x, e.y, e.r * (0.5 + f * 0.5), 0, 7); ctx.fill();
+            const r = e.r * (0.7 + f * 0.6);
+            ctx.drawImage(GX.flare(e.c || '#ffd27a'), e.x - r * 1.5, e.y - r * 1.5, r * 3, r * 3);
             ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
             break;
           }
           case 'tracer': {
-            ctx.strokeStyle = e.c; ctx.globalAlpha = f; ctx.lineWidth = 1.3;
-            ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); ctx.stroke(); ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.strokeStyle = e.c; ctx.globalAlpha = f; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+            const mx = U.lerp(e.x1, e.x2, 0.35), my = U.lerp(e.y1, e.y2, 0.35);
+            ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(e.x2, e.y2); ctx.stroke();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.8; ctx.stroke();
+            ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.lineCap = 'butt';
             break;
           }
           case 'beam': {
-            ctx.globalCompositeOperation = 'lighter';
-            ctx.strokeStyle = e.c; ctx.globalAlpha = f; ctx.lineWidth = e.w * 2.2;
+            ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+            ctx.strokeStyle = e.c; ctx.globalAlpha = f * 0.35; ctx.lineWidth = e.w * 5;
             ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); ctx.stroke();
+            ctx.globalAlpha = f; ctx.lineWidth = e.w * 1.8; ctx.stroke();
             ctx.strokeStyle = '#fff'; ctx.lineWidth = e.w * 0.6; ctx.stroke();
-            ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.lineCap = 'butt';
             break;
           }
           case 'text': {
@@ -186,7 +247,7 @@
             const gr = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, r);
             gr.addColorStop(0, `rgba(255,255,255,${f})`); gr.addColorStop(0.4, `rgba(${c[0]},${c[1]},${c[2]},${f * 0.8})`); gr.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
             ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, 7); ctx.fill();
-            if (e.fx === 'orbital') { ctx.fillStyle = `rgba(220,240,255,${f})`; ctx.fillRect(e.x - 18 * f, e.y - 1200, 36 * f, 1200); }
+            if (e.fx === 'orbital') { const bg = ctx.createLinearGradient(e.x - 20 * f, 0, e.x + 20 * f, 0); bg.addColorStop(0, 'rgba(150,200,255,0)'); bg.addColorStop(0.5, `rgba(240,250,255,${f})`); bg.addColorStop(1, 'rgba(150,200,255,0)'); ctx.fillStyle = bg; ctx.fillRect(e.x - 22 * f, e.y - 1200, 44 * f, 1200); }
             ctx.globalCompositeOperation = 'source-over';
             ctx.strokeStyle = `rgba(255,255,255,${f * 0.6})`; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(e.x, e.y, e.r * (2 - f), 0, 7); ctx.stroke();
             break;
@@ -199,7 +260,8 @@
       ctx.save(); ctx.translate(x, y);
       if (b.built < 1) {
         ctx.globalAlpha = 0.35 + 0.65 * b.built;
-        ctx.beginPath(); ctx.rect(-4, b.h * T * (1 - b.built) - 20 * (1 - b.built), b.w * T + 8, b.h * T + 20); ctx.clip();
+        const SP = RTS.draw.SP, tot = b.h * T + SP;
+        ctx.beginPath(); ctx.rect(-4, -SP + tot * (1 - b.built), b.w * T + 24, tot + 24); ctx.clip();
       }
       DR.drawBuilding(ctx, b.def, { color: b.owner.color, anim: b.anim, turret: b.turret, charge: b.def.sw ? b.charge / this.g.swTime : 0 });
       ctx.restore();
@@ -236,7 +298,7 @@
       const x = U.lerp(u.px, u.x, alpha), y = U.lerp(u.py, u.y, alpha);
       ctx.save(); ctx.translate(x, y);
       if (u.cloaked) ctx.globalAlpha = 0.35;
-      DR.drawUnit(ctx, u.def, { color: u.owner.color, angle: u.angle, turret: u.turret, anim: u.anim, moving: u.moving, alt: u.alt, cargo: u.cargo / u.owner.mods.harvCap });
+      DR.drawUnit(ctx, u.def, { color: u.owner.color, angle: u.angle, turret: u.turret, anim: u.anim, moving: u.moving, alt: u.alt, cargo: u.cargo / u.owner.mods.harvCap, recoil: U.clamp(1 - (this.g.time - u.lastFired) / 0.25, 0, 1) });
       ctx.restore();
     }
     drawHealth(ctx, x, y, w, f, e) {

@@ -197,7 +197,12 @@
       document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
       $('scr-game').classList.add('active'); this.screen = 'game';
       $('ov-end').classList.add('hidden');
-      // Mission-Objekt frisch halten (missionState ist im Spiel)
+      // Ladebildschirm, dann aufbauen (Geländeberechnung dauert einen Moment)
+      if (!meta._loaded) {
+        $('loading').classList.remove('hidden');
+        requestAnimationFrame(() => setTimeout(() => { meta._loaded = true; try { this.startGame(cfg, meta); } finally { meta._loaded = false; $('loading').classList.add('hidden'); } }, 30));
+        return;
+      }
       const game = new RTS.Game(cfg);
       game.init();
       game.map.renderTerrain();

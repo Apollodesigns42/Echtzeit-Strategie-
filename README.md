@@ -75,7 +75,8 @@ Reines HTML5-Canvas + JavaScript (keine Abhängigkeiten):
 - `js/entities.js` – Einheiten-/Gebäudelogik (Bewegung, Kampf, Sammler)
 - `js/game.js` – Simulation, Produktion, Energie, Nebel des Krieges, Superwaffen
 - `js/ai.js` – Bot-KI (Basisbau, Wirtschaft, Forschung, Angriffswellen, Verteidigung)
-- `js/draw.js`, `js/render.js` – prozedurale Grafiken und Darstellung
+- `js/gfx.js` – Grafik-Grundbausteine (Sprite-Cache, Materialien, weiche Schatten, Explosions- und Rauch-Sprites)
+- `js/draw.js`, `js/render.js` – detaillierte prozedurale Einheiten-/Gebäudegrafik (in 2–4-facher Auflösung vorgerendert), Gelände, animiertes Wasser/Lava, Effekte
 - `js/hud.js` – Seitenleiste, Minikarte, Eingabe
 - `js/campaign.js`, `js/campaign2.js` – Kampagnen (Allianz bzw. Schattenkollektiv und Vael)
 - `js/audio.js` – synthetisierte Soundeffekte, Musik und Sprachansagen (Web Audio / Sprachausgabe des Browsers)

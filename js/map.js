@@ -5,7 +5,7 @@
   const TT = { GROUND: 0, SAND: 1, WATER: 2, ROCK: 3, TREE: 4, BLOSSOM: 5 };
 
   const BIOMES = {
-    temperate: { name: 'Gemäßigt', ground: '#4d6b30', ground2: '#5f7d38', dirt: '#6e5b3b', sand: '#b8a372', water: '#1e4466', water2: '#2e6688', rock: '#625d57', rock2: '#857f76', cliff: '#2e2a26', tree: '#2d4a1f', tree2: '#3f6a2a', treeType: 'leaf' },
+    temperate: { name: 'Gemäßigt', ground: '#4d6b30', ground2: '#5f7d38', dirt: '#6e5b3b', sand: '#b8a372', water: '#1e4466', water2: '#2e6688', rock: '#575049', rock2: '#7a7167', cliff: '#2a241f', tree: '#2d4a1f', tree2: '#3f6a2a', treeType: 'leaf' },
     desert:    { name: 'Wüste', ground: '#c4a26a', ground2: '#d1b27a', dirt: '#a6824f', sand: '#dcc390', water: '#1f5370', water2: '#2f7894', rock: '#94704c', rock2: '#b38c62', cliff: '#4d3a28', tree: '#5f6b33', tree2: '#7d8a45', treeType: 'cactus' },
     winter:    { name: 'Winter', ground: '#dbe5ec', ground2: '#eef3f6', dirt: '#9ba8b1', sand: '#c6d3dc', water: '#2a5675', water2: '#4a86a8', rock: '#5f6a73', rock2: '#86929b', cliff: '#2f363c', tree: '#2b4a3a', tree2: '#e8f0f4', treeType: 'pine' },
     wasteland: { name: 'Ödland', ground: '#5c4b3b', ground2: '#6b5845', dirt: '#3f342b', sand: '#7c654c', water: '#8a2a0a', water2: '#e0610f', rock: '#4a4038', rock2: '#6c5f53', cliff: '#1d1915', tree: '#2a221c', tree2: '#4a3b30', treeType: 'dead', lava: true },
@@ -234,18 +234,10 @@
       const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
       const ctx = cv.getContext('2d');
       const img = ctx.createImageData(W, H); const data = img.data;
-      // Detailtexturen
-      const nz = U.makeNoise(this.seed + 5);
-      const TX = 256; const det = new Float32Array(TX * TX), det2 = new Float32Array(TX * TX);
-      for (let y = 0; y < TX; y++) for (let x = 0; x < TX; x++) {
-        // kachelbares Rauschen durch Mischung
-        const f = (xx, yy, s) => nz.fbm(xx / s, yy / s, 3);
-        const a = f(x, y, 6), b = f(x - TX, y, 6), c = f(x, y - TX, 6), d = f(x - TX, y - TX, 6);
-        const u = x / TX, v = y / TX;
-        det[y * TX + x] = U.lerp(U.lerp(a, b, u), U.lerp(c, d, u), v);
-        const a2 = f(x, y, 24), b2 = f(x - TX, y, 24), c2 = f(x, y - TX, 24), d2 = f(x - TX, y - TX, 24);
-        det2[y * TX + x] = U.lerp(U.lerp(a2, b2, u), U.lerp(c2, d2, u), v);
-      }
+      // Kachelbare Detailtexturen (fein, mittel, grob)
+      const TX = 256;
+      const texOf = (seed, freq, oct) => { const c = RTS.gfx.noise(TX, freq, seed, oct); return c.getContext('2d').getImageData(0, 0, TX, TX).data; };
+      const tFine = texOf(this.seed + 5, 48, 3), tMid = texOf(this.seed + 6, 12, 4), tBig = texOf(this.seed + 7, 4, 4), tStr = texOf(this.seed + 8, 24, 2);
       const col = {}; for (const k of ['ground', 'ground2', 'dirt', 'sand', 'water', 'water2', 'rock', 'rock2', 'cliff']) col[k] = U.hexToRgb(B[k]);
       const E = this.elev, wT = this.waterT, rT = this.rockT;
       const sampleE = (fx, fy) => {
@@ -253,88 +245,182 @@
         const x1 = Math.min(w - 1, Math.max(0, x0 + 1)), y1 = Math.min(h - 1, Math.max(0, y0 + 1));
         x0 = Math.min(w - 1, Math.max(0, x0)); y0 = Math.min(h - 1, Math.max(0, y0));
         const a = E[y0 * w + x0], b = E[y0 * w + x1], c = E[y1 * w + x0], d = E[y1 * w + x1];
-        return (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
+        const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+        return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
       };
+      const lava = !!B.lava;
+      const CLIFF = 0.42; // Höhe der Felswände in Kacheln
       for (let py = 0; py < H; py++) {
         const fy = py / T - 0.5;
         for (let px = 0; px < W; px++) {
           const fx = px / T - 0.5;
-          const di = (py & 255) * TX + (px & 255);
-          const d1 = det[di], d2 = det2[di];
-          const e = sampleE(fx, fy) + (d1 - 0.5) * 0.035;
-          let r, g, b;
-          if (e < wT) {
-            const depth = U.clamp((wT - e) / 0.12, 0, 1);
-            const c1 = col.water2, c2 = col.water;
-            r = U.lerp(c1[0], c2[0], depth); g = U.lerp(c1[1], c2[1], depth); b = U.lerp(c1[2], c2[2], depth);
-            const wave = (d1 - 0.5) * 30; r += wave * 0.5; g += wave; b += wave;
-            if (wT - e < 0.008) { r += 40; g += 40; b += 40; }
+          const ti = ((py & 255) * TX + (px & 255)) * 4;
+          const nF = tFine[ti] / 255, nM = tMid[ti] / 255, nB = tBig[(((py >> 2) & 255) * TX + ((px >> 2) & 255)) * 4] / 255;
+          const e = sampleE(fx, fy) + (nM - 0.5) * 0.03 + (nF - 0.5) * 0.008;
+          // Relief (Licht von Nordwesten)
+          const eN = sampleE(fx - 0.3, fy - 0.3);
+          const slope = U.clamp((e - eN) * 30, -1, 1);
+          let r, g, b, a = 255;
+          let cliffK = -1;
+          if (e <= rT && e > rT - 0.2) {
+            // liegt dieser Bodenpixel optisch in einer Felswand (Fels direkt nördlich)?
+            for (let k = 1; k <= 8; k++) { if (sampleE(fx, fy - CLIFF * k / 8) > rT) { cliffK = k / 8; break; } }
+          }
+          if (cliffK >= 0) {
+            // Felswand: vertikale Schichten, unten dunkler
+            const strata = tStr[(((py * 3) & 255) * TX + ((px >> 1) & 255)) * 4] / 255;
+            const cc = col.cliff, rc = col.rock;
+            const t2 = cliffK;
+            r = U.lerp(rc[0], cc[0], 0.5 + t2 * 0.4); g = U.lerp(rc[1], cc[1], 0.5 + t2 * 0.4); b = U.lerp(rc[2], cc[2], 0.5 + t2 * 0.4);
+            const l = (strata - 0.5) * 50 + (nF - 0.5) * 25 - t2 * 25; r += l; g += l; b += l;
+            if (cliffK <= 1 / 8) { r += 30; g += 30; b += 30; } // Abbruchkante
+          } else if (e < wT) {
+            const depth = U.clamp((wT - e) / 0.06, 0, 1);
+            if (lava) { const c1 = col.water2; r = c1[0]; g = c1[1]; b = c1[2]; }
+            else { const s = col.sand, c1 = col.water2; r = U.lerp(s[0], c1[0], 0.6); g = U.lerp(s[1], c1[1], 0.6); b = U.lerp(s[2], c1[2], 0.6); }
+            a = Math.round(U.clamp(1 - depth * 1.6, 0, 1) * (lava ? 120 : 170));
+            if (wT - e < 0.006 && !lava) { r = 235; g = 245; b = 245; a = 200 * (0.6 + nF * 0.4); } // Schaumkante
+            if (wT - e < 0.006 && lava) { r = 40; g = 20; b = 10; a = 230; }
           } else if (e > rT) {
-            const ex = sampleE(fx - 0.25, fy - 0.25), light = U.clamp((e - ex) * 40, -1, 1);
-            const hgt = U.clamp((e - rT) / 0.12, 0, 1);
+            const hgt = U.clamp((e - rT) / 0.15, 0, 1);
             const c1 = col.rock, c2 = col.rock2;
-            r = U.lerp(c1[0], c2[0], hgt * d1); g = U.lerp(c1[1], c2[1], hgt * d1); b = U.lerp(c1[2], c2[2], hgt * d1);
-            const lv = light * 45 + (d1 - 0.5) * 36; r += lv; g += lv; b += lv;
-            if (e - rT < 0.012) { const cc = col.cliff; r = U.lerp(r, cc[0], 0.7); g = U.lerp(g, cc[1], 0.7); b = U.lerp(b, cc[2], 0.7); }
+            // zerklüftete Oberfläche aus kontinuierlichem Rauschen (Licht von NW)
+            const i0 = ti, i1 = ((((py - 2) & 255) * TX + ((px - 2) & 255)) * 4);
+            const h0 = tMid[i0] * 0.6 + tFine[i0] * 0.4, h1 = tMid[i1] * 0.6 + tFine[i1] * 0.4;
+            const sh = U.clamp((h0 - h1) / 255 * 7, -1, 1);
+            const m = U.clamp(hgt * 0.5 + nB * 0.6 - 0.1, 0, 1);
+            r = U.lerp(c1[0], c2[0], m); g = U.lerp(c1[1], c2[1], m); b = U.lerp(c1[2], c2[2], m);
+            const crack = Math.abs(tStr[ti] / 255 - 0.5) < 0.01 && nM > 0.5 ? -30 : 0;
+            const lv = sh * 60 + (nM - 0.5) * 30 + slope * 18 + crack;
+            r += lv; g += lv; b += lv;
+            // Rand zum Abgrund aufhellen
+            if (e - rT < 0.015) { r += 18; g += 18; b += 18; }
           } else {
-            const sandT = U.clamp(1 - (e - wT) / 0.05, 0, 1);
-            const g1 = col.ground, g2 = col.ground2, dd = col.dirt;
-            r = U.lerp(g1[0], g2[0], d1); g = U.lerp(g1[1], g2[1], d1); b = U.lerp(g1[2], g2[2], d1);
-            const dirtAmt = U.clamp((d2 - 0.55) * 4, 0, 0.85);
+            const g1 = col.ground, g2 = col.ground2, dd = col.dirt, sd = col.sand;
+            const m = U.clamp(nM * 0.7 + nF * 0.5 - 0.1, 0, 1);
+            r = U.lerp(g1[0], g2[0], m); g = U.lerp(g1[1], g2[1], m); b = U.lerp(g1[2], g2[2], m);
+            // Erd-/Kiesflecken
+            const dirtAmt = U.clamp((nB - 0.58) * 5 + (nM - 0.5) * 0.8, 0, 0.9);
             r = U.lerp(r, dd[0], dirtAmt); g = U.lerp(g, dd[1], dirtAmt); b = U.lerp(b, dd[2], dirtAmt);
-            if (sandT > 0) { const s = col.sand; r = U.lerp(r, s[0], sandT); g = U.lerp(g, s[1], sandT); b = U.lerp(b, s[2], sandT); }
-            // Schatten vor Felsen
-            if (e > rT - 0.03) { const k = (e - (rT - 0.03)) / 0.03 * 0.35; r *= 1 - k; g *= 1 - k; b *= 1 - k; }
-            const grain = ((px * 7919 + py * 104729) % 13) - 6; r += grain; g += grain; b += grain;
+            const sandT = U.clamp(1 - (e - wT) / 0.045, 0, 1);
+            if (sandT > 0) { const wet = sandT > 0.8 ? 0.8 : 1; r = U.lerp(r, sd[0] * wet, sandT); g = U.lerp(g, sd[1] * wet, sandT); b = U.lerp(b, sd[2] * wet, sandT); }
+            // Schatten am Fuß von Felsen (Umgebungsverdeckung)
+            if (e > rT - 0.04) { const k = (e - (rT - 0.04)) / 0.04 * 0.35; r *= 1 - k; g *= 1 - k; b *= 1 - k; }
+            const lv = slope * 22 + (nF - 0.5) * 22; r += lv; g += lv; b += lv;
           }
           const o = (py * W + px) * 4;
-          data[o] = r; data[o + 1] = g; data[o + 2] = b; data[o + 3] = 255;
+          data[o] = r; data[o + 1] = g; data[o + 2] = b; data[o + 3] = a;
         }
       }
       ctx.putImageData(img, 0, 0);
-      // Bäume / Deko
-      const rng = U.RNG(this.seed + 3);
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const t = this.type[y * w + x];
-        if (t === TT.TREE) this.drawTree(ctx, x * T + T / 2 + rng.range(-5, 5), y * T + T / 2 + rng.range(-5, 5), rng);
-        else if (t === TT.GROUND && rng.chance(0.025)) {
-          // kleine Steine
-          ctx.fillStyle = 'rgba(0,0,0,0.25)'; const sx = x * T + rng.range(4, 28), sy = y * T + rng.range(4, 28);
-          ctx.beginPath(); ctx.ellipse(sx + 1, sy + 1, 3, 2, 0, 0, 7); ctx.fill();
-          ctx.fillStyle = B.rock2; ctx.beginPath(); ctx.ellipse(sx, sy, 2.5, 1.8, 0, 0, 7); ctx.fill();
-        }
-      }
+      this.decorate(ctx);
       this.terrainCanvas = cv;
       this.renderMinimapBase();
+      this.makeWaterTex();
       return cv;
     }
-    drawTree(ctx, x, y, rng) {
+    // Kleindetails: Grasbüschel, Steine, Blumen, Risse
+    decorate(ctx) {
+      const w = this.w, h = this.h, B = this.biome, rng = U.RNG(this.seed + 3), bt = this.biomeId;
+      const tt = (x, y) => this.type[Math.floor(y / T) * w + Math.floor(x / T)];
+      const N = w * h * 9;
+      for (let i = 0; i < N; i++) {
+        const x = rng.range(2, w * T - 2), y = rng.range(2, h * T - 2);
+        const t = tt(x, y);
+        if (t !== TT.GROUND) continue;
+        const r = rng.next();
+        if (bt === 'temperate') {
+          if (r < 0.75) { // Grasbüschel
+            const c = rng.chance(0.5) ? U.shade(B.ground2, 0.25) : U.shade(B.ground, -0.25);
+            ctx.strokeStyle = c; ctx.lineWidth = 0.8; ctx.beginPath();
+            for (let k = 0; k < 4; k++) { const a = -Math.PI / 2 + rng.range(-0.7, 0.7); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * rng.range(2, 4), y + Math.sin(a) * rng.range(2, 4)); }
+            ctx.stroke();
+          } else if (r < 0.8) { ctx.fillStyle = rng.pick(['#fde047', '#f9fafb', '#c084fc', '#fb7185']); ctx.beginPath(); ctx.arc(x, y, 0.9, 0, 7); ctx.fill(); }
+          else if (r < 0.86) this.pebble(ctx, x, y, rng);
+        } else if (bt === 'desert') {
+          if (r < 0.3) this.pebble(ctx, x, y, rng);
+          else if (r < 0.45) { ctx.strokeStyle = 'rgba(120,90,50,0.25)'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.quadraticCurveTo(x, y - 2, x + 5, y); ctx.stroke(); }
+          else if (r < 0.48) { ctx.strokeStyle = '#7d6b3a'; ctx.lineWidth = 0.6; ctx.beginPath(); for (let k = 0; k < 5; k++) { const a = rng.range(0, 6.28); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * 3, y + Math.sin(a) * 3); } ctx.stroke(); }
+        } else if (bt === 'winter') {
+          if (r < 0.25) { ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(x, y, 0.8, 0.8); }
+          else if (r < 0.32) this.pebble(ctx, x, y, rng);
+          else if (r < 0.36) { ctx.strokeStyle = 'rgba(80,100,120,0.25)'; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(x, y); for (let k = 0; k < 3; k++) ctx.lineTo(x + rng.range(-6, 6), y + rng.range(-3, 3)); ctx.stroke(); }
+        } else {
+          if (r < 0.3) this.pebble(ctx, x, y, rng);
+          else if (r < 0.4) { ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(x, y); let cx = x, cy = y; for (let k = 0; k < 4; k++) { cx += rng.range(-5, 5); cy += rng.range(-4, 4); ctx.lineTo(cx, cy); } ctx.stroke(); }
+          else if (r < 0.42) { ctx.fillStyle = 'rgba(255,90,20,0.6)'; ctx.fillRect(x, y, 1, 1); }
+        }
+      }
+      // Bäume (von Norden nach Süden für korrekte Überdeckung)
+      const trees = [];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (this.type[y * w + x] === TT.TREE) trees.push([x, y]);
+      const pos = trees.map(([x, y]) => [x * T + T / 2 + rng.range(-5, 5), y * T + T / 2 + rng.range(-5, 5)]);
+      for (const [x, y] of pos) this.drawTree(ctx, x, y, rng, true);
+      for (const [x, y] of pos) this.drawTree(ctx, x, y, rng, false);
+    }
+    pebble(ctx, x, y, rng) {
+      const s = rng.range(1, 2.6);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x + 0.8, y + 0.8, s, s * 0.7, 0, 0, 7); ctx.fill();
+      const g = ctx.createRadialGradient(x - s * 0.4, y - s * 0.4, 0.2, x, y, s);
+      g.addColorStop(0, U.shade(this.biome.rock2, 0.35)); g.addColorStop(1, this.biome.rock);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, s, s * 0.7, rng.range(0, 3), 0, 7); ctx.fill();
+    }
+    makeWaterTex() {
+      const S = 256, cv = document.createElement('canvas'); cv.width = S; cv.height = S;
+      const c = cv.getContext('2d'); const img = c.createImageData(S, S);
+      const n1 = RTS.gfx.noise(S, 6, this.seed + 70, 4).getContext('2d').getImageData(0, 0, S, S).data;
+      const lava = !!this.biome.lava;
+      for (let i = 0; i < S * S; i++) {
+        const v = n1[i * 4] / 255;
+        const ridge = Math.pow(1 - Math.abs(v - 0.5) * 2, lava ? 3 : 5);
+        if (lava) { img.data[i * 4] = 255; img.data[i * 4 + 1] = 120 + ridge * 135; img.data[i * 4 + 2] = 30 + ridge * 120; img.data[i * 4 + 3] = ridge * 255; }
+        else { img.data[i * 4] = 200; img.data[i * 4 + 1] = 235; img.data[i * 4 + 2] = 255; img.data[i * 4 + 3] = ridge * 70; }
+      }
+      c.putImageData(img, 0, 0);
+      this.waterTex = cv;
+    }
+    drawTree(ctx, x, y, rng, shadowPass) {
       const B = this.biome;
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      ctx.beginPath(); ctx.ellipse(x + 5, y + 6, 12, 8, 0, 0, 7); ctx.fill();
+      if (shadowPass) { ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(x + 7, y + 7, 13, 8, 0.3, 0, 7); ctx.fill(); return; }
       if (B.treeType === 'leaf') {
-        for (let k = 0; k < 3; k++) {
-          const ox = rng.range(-6, 6), oy = rng.range(-6, 6), r = rng.range(7, 11);
-          const g = ctx.createRadialGradient(x + ox - 3, y + oy - 3, 1, x + ox, y + oy, r);
-          g.addColorStop(0, B.tree2); g.addColorStop(1, B.tree);
+        const n = 4 + Math.floor(rng.next() * 3);
+        for (let k = 0; k < n; k++) {
+          const ox = rng.range(-7, 7), oy = rng.range(-7, 6), r = rng.range(5.5, 9.5);
+          const g = ctx.createRadialGradient(x + ox - r * 0.4, y + oy - r * 0.45, r * 0.1, x + ox, y + oy, r);
+          g.addColorStop(0, U.shade(B.tree2, 0.3)); g.addColorStop(0.5, B.tree2); g.addColorStop(1, U.shade(B.tree, -0.35));
           ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x + ox, y + oy, r, 0, 7); ctx.fill();
+          // Blattstruktur
+          ctx.fillStyle = 'rgba(255,255,255,0.12)';
+          for (let j = 0; j < 5; j++) { ctx.beginPath(); ctx.arc(x + ox + rng.range(-r * 0.6, r * 0.2), y + oy + rng.range(-r * 0.6, r * 0.2), rng.range(1, 2), 0, 7); ctx.fill(); }
+          ctx.fillStyle = 'rgba(0,0,0,0.12)';
+          for (let j = 0; j < 4; j++) { ctx.beginPath(); ctx.arc(x + ox + rng.range(0, r * 0.6), y + oy + rng.range(0, r * 0.6), rng.range(1, 2.2), 0, 7); ctx.fill(); }
         }
       } else if (B.treeType === 'pine') {
         for (let k = 0; k < 2; k++) {
-          const ox = rng.range(-6, 6), oy = rng.range(-5, 5), r = rng.range(7, 10);
-          ctx.fillStyle = B.tree; ctx.beginPath();
-          for (let a = 0; a < 7; a++) { const ang = a / 7 * Math.PI * 2, rr = a % 2 ? r * 0.55 : r; ctx.lineTo(x + ox + Math.cos(ang) * rr, y + oy + Math.sin(ang) * rr); }
-          ctx.fill(); ctx.fillStyle = B.tree2; ctx.beginPath(); ctx.arc(x + ox - 1, y + oy - 1, r * 0.35, 0, 7); ctx.fill();
+          const ox = rng.range(-6, 6), oy = rng.range(-5, 5), r = rng.range(8, 11);
+          for (let tier = 0; tier < 3; tier++) {
+            const rr = r * (1 - tier * 0.28), cx = x + ox, cy = y + oy - tier * 2.5;
+            ctx.fillStyle = U.shade(B.tree, tier * 0.12 - 0.15); ctx.beginPath();
+            for (let a = 0; a < 16; a++) { const ang = a / 16 * Math.PI * 2, d = a % 2 ? rr * 0.6 : rr; ctx.lineTo(cx + Math.cos(ang) * d, cy + Math.sin(ang) * d); }
+            ctx.fill();
+            ctx.fillStyle = 'rgba(240,248,255,0.85)'; ctx.beginPath(); ctx.arc(cx - rr * 0.25, cy - rr * 0.25, rr * 0.35, 0, 7); ctx.fill();
+          }
         }
       } else if (B.treeType === 'cactus') {
-        ctx.fillStyle = B.tree; ctx.strokeStyle = B.tree2; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(x, y, 5, 0, 7); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.arc(x + 7, y + 3, 3, 0, 7); ctx.fill();
-        ctx.fillStyle = '#8a7350'; ctx.beginPath(); ctx.ellipse(x - 7, y + 5, 6, 4, 0.3, 0, 7); ctx.fill();
+        ctx.fillStyle = '#7d6a45'; ctx.beginPath(); ctx.ellipse(x - 7, y + 5, 7, 4.5, 0.3, 0, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.beginPath(); ctx.ellipse(x - 8, y + 3.5, 4, 2, 0.3, 0, 7); ctx.fill();
+        for (const [ox, oy, r] of [[0, 0, 4.8], [6, 3, 3], [-3, -5, 2.6]]) {
+          const g = ctx.createRadialGradient(x + ox - r * 0.4, y + oy - r * 0.4, 0.3, x + ox, y + oy, r);
+          g.addColorStop(0, '#9fb05a'); g.addColorStop(1, '#3f4f22'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x + ox, y + oy, r, 0, 7); ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.4; for (let a = 0; a < 6; a++) { ctx.beginPath(); ctx.moveTo(x + ox, y + oy); ctx.lineTo(x + ox + Math.cos(a) * r, y + oy + Math.sin(a) * r); ctx.stroke(); }
+        }
       } else {
-        ctx.strokeStyle = B.tree2; ctx.lineWidth = 2.5;
-        for (let k = 0; k < 5; k++) { const a = rng.range(0, 6.28); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * 10, y + Math.sin(a) * 10); ctx.stroke(); }
-        ctx.fillStyle = B.tree; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 7); ctx.fill();
+        ctx.strokeStyle = '#1a1410'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+        for (let k = 0; k < 5; k++) { const a = rng.range(0, 6.28), l = rng.range(6, 12); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke(); }
+        ctx.strokeStyle = B.tree2; ctx.lineWidth = 1.4;
+        for (let k = 0; k < 5; k++) { const a = rng.range(0, 6.28), l = rng.range(6, 12); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke(); }
+        ctx.fillStyle = '#2a211a'; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 7); ctx.fill();
+        ctx.lineCap = 'butt';
       }
     }
     renderMinimapBase() {
