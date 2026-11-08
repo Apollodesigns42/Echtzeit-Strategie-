@@ -159,3 +159,9 @@ select, input[type=text] { background: #0d1114; color: var(--text); border: 1px 
 #end-title.lose { color: var(--bad); }
 ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { background: #3a4550; } ::-webkit-scrollbar-track { background: #0b0e11; }
 @media (max-height: 760px) { #mm-wrap, #minimap { width: 180px; height: 180px; } .bi { height: 54px; } #selinfo { min-height: 96px; } }
+.camp-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.ctab { padding: 10px 12px; background: #12171c; border: 1px solid #2c353e; border-top: 3px solid; cursor: pointer; text-align: left; color: var(--text); font-family: inherit; }
+.ctab:hover { background: #1a2027; }
+.ctab.sel { background: #222a32; box-shadow: 0 0 12px rgba(255,255,255,.06); }
+.ctab b { display: block; font-size: 15px; }
+.ctab span { font-size: 12px; color: var(--muted); }

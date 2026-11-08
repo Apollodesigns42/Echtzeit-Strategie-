@@ -381,7 +381,10 @@
     cmdMove(units, x, y, amove) {
       units = units.filter(u => u.isUnit && !u.dead);
       const spots = this.formationSpots(units, x, y);
+      const ground = units.filter(u => !u.isAir && u.def.weapons.length);
+      const gs = amove && ground.length > 1 ? Math.min(...ground.map(u => u.baseSpeed)) : 0;
       for (const u of units) {
+        u.groupSpeed = u.isAir ? 0 : gs;
         const s = spots.get(u);
         if (u.def.harvester) { u.order = { type: 'move' }; u.hstate = null; if (u.dockRef && u.dockRef.dockUser === u) u.dockRef.dockUser = null; }
         else if (amove && u.def.weapons.length) u.order = { type: 'amove', x: s.x, y: s.y };

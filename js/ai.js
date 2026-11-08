@@ -6,7 +6,7 @@
   const UNIT_WEIGHTS = {
     a_rifle: 3, a_rocket: 2.2, a_jeep: 1.5, a_tank: 4, a_arty: 1.2, a_epic: 1.4, a_air: 1,
     s_militia: 3, s_flamer: 2, s_rocket: 2.2, s_buggy: 2, s_tank: 4, s_arty: 1.3, s_epic: 1.3, s_air: 1,
-    v_drone: 3.5, v_spitter: 2.4, v_glider: 2, v_prism: 4, v_spore: 1.2, v_epic: 1.4, v_air: 1,
+    v_drone: 2.5, v_spitter: 3.2, v_glider: 2, v_prism: 4.2, v_spore: 1.2, v_epic: 1.4, v_air: 1,
   };
 
   class AI {
@@ -234,13 +234,14 @@
       const army = myUnits.filter(u => u.def.weapons.length && !u.def.harvester && !this.attackGroup.includes(u));
       const b = this.base;
       // Angriffswelle
-      if (!this.opts.noAttack && g.time >= this.nextAttack && army.length >= this.waveSize) {
+      const overdue = g.time >= this.nextAttack + 150 && army.length >= Math.min(this.waveSize, 8);
+      if (!this.opts.noAttack && g.time >= this.nextAttack && (army.length >= this.waveSize || overdue)) {
         const cx = army.reduce((a, u) => a + u.x, 0) / army.length, cy = army.reduce((a, u) => a + u.y, 0) / army.length;
         const tgt = this.pickTarget(cx, cy);
         if (tgt) {
           g.cmdMove(army, tgt.x, tgt.y, true);
           this.attackGroup.push(...army);
-          this.waveN++; this.waveSize = Math.min(40, this.waveSize + this.lv.waveGrow);
+          this.waveN++; this.waveSize = Math.min(26, this.waveSize + this.lv.waveGrow);
           this.nextAttack = g.time + (this.level === 'easy' ? 160 : this.level === 'normal' ? 120 : 90) * (0.8 + this.rng.next() * 0.4);
         }
       }

@@ -80,7 +80,13 @@
       this.dead = false; this.selected = false;
     }
     hpMult() { const m = this.owner.mods; return (m.hp[this.def.armor] || 1) * RANK_HP[this.rank]; }
-    get speed() { const m = this.owner.mods; return this.def.speed * T * (m.speed[this.def.armor] || 1) * (m.speed.all || 1); }
+    get baseSpeed() { const m = this.owner.mods; return this.def.speed * T * (m.speed[this.def.armor] || 1) * (m.speed.all || 1) * (this.speedMult || 1); }
+    get speed() {
+      const s = this.baseSpeed;
+      // Formationsbewegung: Gruppe hält das Tempo der langsamsten Einheit, bis gekämpft wird
+      if (this.groupSpeed && this.order.type === 'amove' && !this.target) return Math.min(s, this.groupSpeed);
+      return s;
+    }
     get value() { return this.def.cost; }
     refreshHp() { const r = this.hp / this.maxHp; this.maxHp = this.def.hp * this.hpMult(); this.hp = this.maxHp * r; }
     addXp(v) {
@@ -258,6 +264,13 @@
         }
       });
       vx += sx; vy += sy;
+      // Fahrzeuge überrollen feindliche Infanterie
+      if (this.moving && this.def.cat === 'veh' && this.def.armor === 'heavy' && !this.def.hover) {
+        g.queryRadius(this.x, this.y, this.radius * 0.6, (o) => {
+          if (o.dead || !o.isUnit || o.def.cat !== 'inf' || !g.hostile(this.owner, o.owner)) return;
+          g.damage(o, 260 * dt, 'crush', this);
+        });
+      }
       if (vx || vy) {
         const nx = this.x + vx * dt, ny = this.y + vy * dt;
         const mode = this.mode;
@@ -337,12 +350,12 @@
             }
           }
           if (!ref) { this.hstate = 'wait'; this.harvT = 3; return; }
-          this.dockRef = ref; const dp = ref.dockPos();
+          this.dockRef = ref; const dp = ref.dockPos(this.x, this.y); this.dockPt = dp;
           this.moveTo(dp.x, dp.y); this.hstate = 'toDock'; this.tries = 0; return;
         }
         case 'toDock': {
           const ref = this.dockRef; if (!ref || ref.dead) { this.dockRef = null; this.hstate = 'return'; return; }
-          const dp = ref.dockPos(); const d = U.dist(this.x, this.y, dp.x, dp.y);
+          const dp = this.dockPt || ref.dockPos(); const d = U.dist(this.x, this.y, dp.x, dp.y);
           const close = d < T * 0.7 || (!this.path && !this.pathPending && d < T * 1.8);
           if (close) {
             const u = ref.dockUser;
@@ -382,7 +395,16 @@
     }
     refreshHp() { const r = this.hp / this.maxHp; this.maxHp = this.def.hp * 1.4 * this.owner.mods.bldHp; this.hp = this.maxHp * r; }
     get powered() { return !(this.def.power < 0 && this.owner.lowPower); }
-    dockPos() { return { x: (this.tx + this.w / 2) * T, y: (this.ty + this.h + 0.55) * T }; }
+    dockPos(fx, fy) {
+      const def = { x: (this.tx + this.w / 2) * T, y: (this.ty + this.h + 0.55) * T };
+      if (fx == null) return def;
+      // nächstgelegene freie Seite der Raffinerie
+      const m = this.game.map, cx = this.tx + this.w / 2, cy = this.ty + this.h / 2;
+      const cands = [def, { x: cx * T, y: (this.ty - 0.55) * T }, { x: (this.tx - 0.55) * T, y: cy * T }, { x: (this.tx + this.w + 0.55) * T, y: cy * T }];
+      let best = def, bd = 1e18;
+      for (const c of cands) { if (!m.passablePx(c.x, c.y, 0)) continue; const d = U.dist2(fx, fy, c.x, c.y); if (d < bd) { bd = d; best = c; } }
+      return best;
+    }
     exitPos() { return { x: (this.tx + this.w / 2) * T, y: (this.ty + this.h + 0.5) * T }; }
     update(dt) {
       const g = this.game; this.anim += dt;

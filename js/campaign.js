@@ -203,5 +203,8 @@
     };
   }
 
-  RTS.campaign = { MISSIONS, buildConfig, LEVELS };
+  const CAMPAIGNS = [
+    { id: 'allianz', faction: 'allianz', title: 'Operation Morgenröte', sub: 'Kampagne der Vereinigten Allianz', missions: MISSIONS },
+  ];
+  RTS.campaign = { MISSIONS, CAMPAIGNS, buildConfig, LEVELS, helpers: { autoPlace, base, squad, hasBuildings, hasUnits, say, shiftLv } };
 })();

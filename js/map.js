@@ -89,8 +89,9 @@
       // Kristallfelder planen
       const fields = [];
       const allStarts = opts.starts ? this.starts : corners.map(c => ({ tx: c[0], ty: c[1] }));
+      const angOff = rng.range(-0.7, 0.7); // gleiche Abweichung für alle Starts -> faire Felder
       for (const s of allStarts) {
-        const ang = Math.atan2(cy - s.ty, cx - s.tx) + rng.range(-0.7, 0.7);
+        const ang = Math.atan2(cy - s.ty, cx - s.tx) + angOff;
         fields.push({ tx: Math.round(s.tx + Math.cos(ang) * 11), ty: Math.round(s.ty + Math.sin(ang) * 11), r: 4 });
       }
       fields.push({ tx: cx, ty: cy, r: 5 });

@@ -35,6 +35,7 @@
       if (name === 'settings') this.prevScreen = this.inGame ? 'game' : this.screen;
       document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
       $('scr-' + name).classList.add('active');
+      if (name !== 'game') document.documentElement.style.setProperty('--accent', '#f5b301');
       this.screen = name;
       if (name === 'campaign') this.renderMissionList();
       if (name === 'skirmish') this.updatePreview();
@@ -150,18 +151,31 @@
 
     // ---------- Kampagne ----------
     initCampaign() {
-      this.selMission = 0;
+      this.selMission = 0; this.selCamp = 0;
       $('btn-mission-start').onclick = () => {
-        const m = RTS.campaign.MISSIONS[this.selMission];
+        const m = this.missions()[this.selMission];
         if (!this.missionUnlocked(this.selMission)) return;
         const cfg = RTS.campaign.buildConfig(m, $('camp-diff').value);
-        this.startGame(cfg, { mode: 'campaign', mission: this.selMission });
+        this.startGame(cfg, { mode: 'campaign', camp: this.selCamp, mission: this.selMission });
       };
     },
-    missionUnlocked(i) { return i === 0 || this.progress.done.includes(RTS.campaign.MISSIONS[i - 1].id); },
+    missions(ci) { return RTS.campaign.CAMPAIGNS[ci == null ? this.selCamp : ci].missions; },
+    missionUnlocked(i) { return i === 0 || this.progress.done.includes(this.missions()[i - 1].id); },
     renderMissionList() {
+      const camps = RTS.campaign.CAMPAIGNS, cur = camps[this.selCamp];
+      const tabs = $('camp-tabs'); tabs.innerHTML = '';
+      camps.forEach((c, ci) => {
+        const F = D.FACTIONS[c.faction];
+        const done = c.missions.filter(m => this.progress.done.includes(m.id)).length;
+        const el = document.createElement('button'); el.className = 'ctab' + (ci === this.selCamp ? ' sel' : ''); el.style.borderTopColor = F.color;
+        el.innerHTML = `<b style="color:${F.color}">${c.title}</b><span>${F.name} · ${done}/${c.missions.length} Missionen</span>`;
+        el.onclick = () => { this.selCamp = ci; this.selMission = 0; RTS.audio.init(); RTS.audio.play('click'); this.renderMissionList(); };
+        tabs.appendChild(el);
+      });
+      $('camp-title').textContent = 'Kampagne: ' + cur.title;
+      document.documentElement.style.setProperty('--accent', { allianz: '#f5b301', schatten: '#ef4444', vael: '#c084fc' }[cur.faction]);
       const box = $('mission-list'); box.innerHTML = '';
-      RTS.campaign.MISSIONS.forEach((m, i) => {
+      this.missions().forEach((m, i) => {
         const el = document.createElement('div');
         const unlocked = this.missionUnlocked(i), done = this.progress.done.includes(m.id);
         el.className = 'mission' + (i === this.selMission ? ' sel' : '') + (unlocked ? '' : ' locked');
@@ -169,7 +183,7 @@
         el.onclick = () => { if (!unlocked) return; this.selMission = i; RTS.audio.init(); RTS.audio.play('click'); this.renderMissionList(); };
         box.appendChild(el);
       });
-      const m = RTS.campaign.MISSIONS[this.selMission];
+      const m = this.missions()[this.selMission];
       $('brief-title').textContent = `Mission ${this.selMission + 1}: ${m.title}`;
       const enemies = m.players.filter(p => !p.human).map(p => D.FACTIONS[p.faction].name);
       $('brief-meta').textContent = `Fraktion: ${D.FACTIONS[m.players[0].faction].name} · Gegner: ${enemies.join(', ')} · Gebiet: ${RTS.BIOMES[m.map.biome].name}`;
@@ -241,7 +255,7 @@
       const meta = this.lastMeta;
       let sub = 'Spielzeit: ' + U.fmtTime(g.time);
       if (meta.mode === 'campaign') {
-        const m = RTS.campaign.MISSIONS[meta.mission];
+        const ms = this.missions(meta.camp), m = ms[meta.mission];
         sub = `Mission ${meta.mission + 1}: ${m.title} – ` + (win ? 'Mission erfüllt.' : 'Mission gescheitert.') + ' ' + sub;
         if (win && !this.progress.done.includes(m.id)) { this.progress.done.push(m.id); U.store.set('kf_progress', this.progress); }
       }
@@ -254,7 +268,7 @@
       btn('Hauptmenü', () => { this.stopGame(); this.show('menu'); });
       btn('Weiterspielen', () => { $('ov-end').classList.add('hidden'); this.paused = false; });
       btn('Erneut spielen', () => this.startGame(this.lastCfg, meta));
-      if (meta.mode === 'campaign' && win && meta.mission + 1 < RTS.campaign.MISSIONS.length) btn('Nächste Mission', () => { this.stopGame(); this.selMission = meta.mission + 1; this.show('campaign'); }, true);
+      if (meta.mode === 'campaign' && win && meta.mission + 1 < this.missions(meta.camp).length) btn('Nächste Mission', () => { this.stopGame(); this.selCamp = meta.camp; this.selMission = meta.mission + 1; this.show('campaign'); }, true);
       $('ov-end').classList.remove('hidden');
     },
 

@@ -24,7 +24,8 @@
 <!-- ===== Kampagne ===== -->
 <div id="scr-campaign" class="screen">
   <div class="panel wide">
-    <h1>Kampagne: Operation Morgenröte</h1>
+    <h1 id="camp-title">Kampagne</h1>
+    <div id="camp-tabs" class="camp-tabs"></div>
     <div class="camp-layout">
       <div id="mission-list" class="mission-list"></div>
       <div class="briefing">
@@ -141,6 +142,8 @@
           <li>Gebäude verbrauchen Energie. Bei Energiemangel produziert ihr nur halb so schnell, Verteidigung fällt aus.</li>
           <li>Gebäude müssen in der Nähe bestehender Gebäude errichtet werden.</li>
           <li>Einheiten sammeln Erfahrung (★) und werden stärker.</li>
+          <li>Schwere Fahrzeuge überrollen feindliche Infanterie.</li>
+          <li>Gruppen mit Angriffsbefehl bleiben zusammen (Tempo der langsamsten Einheit).</li>
           <li>Schadensarten: MG gegen Infanterie, Kanonen/Raketen gegen Fahrzeuge, Flak gegen Luft.</li>
         </ul>
       </div>
@@ -219,6 +222,7 @@
 <script src="js/render.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/campaign.js"></script>
+<script src="js/campaign2.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/main.js"></script>
 </body>
