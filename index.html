@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kristallfront – Echtzeit-Strategie</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<!-- ===== Hauptmenü ===== -->
+<div id="scr-menu" class="screen active">
+  <canvas id="menu-bg"></canvas>
+  <div class="menu-box">
+    <div class="logo"><span class="logo-a">KRISTALL</span><span class="logo-b">FRONT</span></div>
+    <div class="logo-sub">Echtzeit-Strategie · Krieg um das Kristallit</div>
+    <button class="mbtn" data-go="campaign">Kampagne</button>
+    <button class="mbtn" data-go="skirmish">Gefecht gegen Bots</button>
+    <button class="mbtn" data-go="settings">Einstellungen</button>
+    <button class="mbtn" data-go="help">Steuerung &amp; Hilfe</button>
+    <div class="menu-foot">Für Maus &amp; Tastatur optimiert · v1.0</div>
+  </div>
+</div>
+
+<!-- ===== Kampagne ===== -->
+<div id="scr-campaign" class="screen">
+  <div class="panel wide">
+    <h1>Kampagne: Operation Morgenröte</h1>
+    <div class="camp-layout">
+      <div id="mission-list" class="mission-list"></div>
+      <div class="briefing">
+        <h2 id="brief-title">–</h2>
+        <div id="brief-meta" class="brief-meta"></div>
+        <div id="brief-text" class="brief-text"></div>
+        <div class="row">
+          <label>Schwierigkeit
+            <select id="camp-diff"><option value="easy">Leicht</option><option value="normal" selected>Normal</option><option value="hard">Schwer</option></select>
+          </label>
+        </div>
+        <div class="row right">
+          <button class="btn" data-go="menu">Zurück</button>
+          <button class="btn primary" id="btn-mission-start">Mission starten</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Gefecht ===== -->
+<div id="scr-skirmish" class="screen">
+  <div class="panel wide">
+    <h1>Gefecht</h1>
+    <div class="sk-layout">
+      <div class="sk-left">
+        <h3>Karte</h3>
+        <select id="sk-map"></select>
+        <canvas id="sk-preview" width="220" height="220"></canvas>
+        <div id="sk-mapdesc" class="small"></div>
+      </div>
+      <div class="sk-right">
+        <h3>Spieler</h3>
+        <table class="slots">
+          <thead><tr><th></th><th>Spieler</th><th>Fraktion</th><th>Farbe</th><th>Team</th><th>Start</th></tr></thead>
+          <tbody id="sk-slots"></tbody>
+        </table>
+        <h3>Optionen</h3>
+        <div class="opts">
+          <label>Startkapital <select id="sk-credits"><option value="5000">5.000</option><option value="10000" selected>10.000</option><option value="20000">20.000</option><option value="50000">50.000</option></select></label>
+          <label>Spieltempo <select id="sk-speed"><option value="0.75">Langsam</option><option value="1" selected>Normal</option><option value="1.35">Schnell</option><option value="1.7">Sehr schnell</option></select></label>
+          <label>Start mit <select id="sk-start"><option value="standard" selected>Basis + Trupp</option><option value="mcv">Nur Bau-Fahrzeug</option></select></label>
+          <label><input type="checkbox" id="sk-sw" checked> Superwaffen</label>
+          <label><input type="checkbox" id="sk-reveal"> Karte aufgedeckt</label>
+        </div>
+        <div class="row right">
+          <button class="btn" data-go="menu">Zurück</button>
+          <button class="btn primary" id="btn-sk-start">Gefecht starten</button>
+        </div>
+      </div>
+    </div>
+    <div class="factions" id="faction-cards"></div>
+  </div>
+</div>
+
+<!-- ===== Einstellungen ===== -->
+<div id="scr-settings" class="screen">
+  <div class="panel">
+    <h1>Einstellungen</h1>
+    <div class="opts col">
+      <label>Lautstärke <input type="range" id="set-vol" min="0" max="1" step="0.05"></label>
+      <label><input type="checkbox" id="set-voice"> Sprachansagen (Sprachausgabe des Browsers)</label>
+      <label><input type="checkbox" id="set-music"> Hintergrundmusik</label>
+      <label><input type="checkbox" id="set-edge"> Kamera am Bildschirmrand scrollen</label>
+      <label>Scrollgeschwindigkeit <input type="range" id="set-scroll" min="300" max="2000" step="50"></label>
+      <label><input type="checkbox" id="set-classic"> Klassische Steuerung (Linksklick = Befehl, Rechtsklick = Abwählen)</label>
+    </div>
+    <div class="row right"><button class="btn primary" data-go="back">Zurück</button></div>
+  </div>
+</div>
+
+<!-- ===== Hilfe ===== -->
+<div id="scr-help" class="screen">
+  <div class="panel wide">
+    <h1>Steuerung &amp; Hilfe</h1>
+    <div class="help-cols">
+      <div>
+        <h3>Maus</h3>
+        <ul>
+          <li><b>Linksklick</b> – Einheit/Gebäude auswählen</li>
+          <li><b>Linke Maustaste ziehen</b> – Rahmenauswahl</li>
+          <li><b>Doppelklick</b> – alle sichtbaren Einheiten dieses Typs</li>
+          <li><b>Rechtsklick</b> – Bewegen / Angreifen / Sammeln / Sammelpunkt setzen</li>
+          <li><b>Rechte oder mittlere Maustaste ziehen</b> – Kamera verschieben</li>
+          <li><b>Mausrad</b> – Zoom</li>
+          <li><b>Shift</b> + Klick – zur Auswahl hinzufügen</li>
+          <li><b>Strg</b> + Rechtsklick – Angriffsbewegung</li>
+        </ul>
+        <h3>Seitenleiste</h3>
+        <ul>
+          <li><b>Linksklick</b> auf Symbol – in Auftrag geben (Shift: 5×)</li>
+          <li><b>Rechtsklick</b> auf Symbol – pausieren / abbrechen</li>
+          <li>Fertige Gebäude anklicken und auf der Karte platzieren</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Tastatur</h3>
+        <ul>
+          <li><b>Pfeiltasten</b> – Kamera bewegen</li>
+          <li><b>A</b> – Angriffsbewegung (danach Ziel anklicken)</li>
+          <li><b>S</b> – Stopp</li>
+          <li><b>D</b> – Bau-Fahrzeug aufbauen</li>
+          <li><b>Q</b> – alle Kampfeinheiten auswählen</li>
+          <li><b>W</b> – alle Einheiten des gewählten Typs auf dem Bildschirm</li>
+          <li><b>Strg + 1–9</b> – Gruppe speichern, <b>1–9</b> – Gruppe wählen (2× = Kamera)</li>
+          <li><b>H</b> – zur Basis, <b>Leertaste</b> – zur letzten Meldung</li>
+          <li><b>R</b> – Reparaturmodus, <b>X</b> – Verkaufsmodus</li>
+          <li><b>Tab</b> – nächste Bauleiste, <b>Esc</b> – Pause / Abbrechen</li>
+          <li><b>+ / −</b> – Spieltempo</li>
+        </ul>
+        <h3>Grundlagen</h3>
+        <ul>
+          <li>Sammler ernten <span class="cy">Kristallit</span> und bringen es zur Raffinerie → Credits.</li>
+          <li>Gebäude verbrauchen Energie. Bei Energiemangel produziert ihr nur halb so schnell, Verteidigung fällt aus.</li>
+          <li>Gebäude müssen in der Nähe bestehender Gebäude errichtet werden.</li>
+          <li>Einheiten sammeln Erfahrung (★) und werden stärker.</li>
+          <li>Schadensarten: MG gegen Infanterie, Kanonen/Raketen gegen Fahrzeuge, Flak gegen Luft.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="row right"><button class="btn primary" data-go="menu">Zurück</button></div>
+  </div>
+</div>
+
+<!-- ===== Spiel ===== -->
+<div id="scr-game" class="screen">
+  <div id="viewport">
+    <canvas id="view"></canvas>
+    <div id="msgs"></div>
+    <div id="objectives" class="hidden"></div>
+    <div id="toprow">
+      <div id="clock">0:00</div>
+      <div id="speedind"></div>
+    </div>
+    <div id="swpanel"></div>
+    <div id="tooltip" class="hidden"></div>
+    <div id="selbox" class="hidden"></div>
+  </div>
+  <aside id="sidebar">
+    <div id="sb-head">
+      <div id="credits">$ 0</div>
+      <div id="powerbar"><div id="power-fill"></div><div id="power-use"></div><span id="power-txt"></span></div>
+    </div>
+    <div id="mm-wrap"><canvas id="minimap" width="236" height="236"></canvas><div id="mm-off">RADAR OFFLINE</div></div>
+    <div id="sb-tools">
+      <button id="tool-repair" title="Reparieren (R)">🔧</button>
+      <button id="tool-sell" title="Verkaufen (X)">$</button>
+      <button id="tool-obj" title="Missionsziele">◎</button>
+      <button id="tool-menu" title="Menü (Esc)">☰</button>
+    </div>
+    <div id="tabs"></div>
+    <div id="build"></div>
+    <div id="selinfo"></div>
+  </aside>
+
+  <div id="ov-pause" class="overlay hidden">
+    <div class="panel">
+      <h1>Pause</h1>
+      <div class="col">
+        <button class="mbtn" id="pz-resume">Fortsetzen</button>
+        <label class="inline">Lautstärke <input type="range" id="pz-vol" min="0" max="1" step="0.05"></label>
+        <button class="mbtn" id="pz-restart">Neu starten</button>
+        <button class="mbtn" id="pz-quit">Aufgeben &amp; Hauptmenü</button>
+      </div>
+    </div>
+  </div>
+  <div id="ov-end" class="overlay hidden">
+    <div class="panel wide">
+      <h1 id="end-title">Sieg</h1>
+      <div id="end-sub"></div>
+      <table class="stats" id="end-stats"></table>
+      <div class="row right" id="end-buttons"></div>
+    </div>
+  </div>
+  <div id="ov-brief" class="overlay hidden">
+    <div class="panel">
+      <h1 id="ib-title"></h1>
+      <div id="ib-text" class="brief-text"></div>
+      <div class="row right"><button class="btn primary" id="ib-ok">Weiter</button></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="js/map.js"></script>
+<script src="js/path.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/draw.js"></script>
+<script src="js/render.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/campaign.js"></script>
+<script src="js/hud.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
