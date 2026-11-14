@@ -18,6 +18,9 @@
     { id: 'frostbruch', name: 'Frostbruch', size: 112, biome: 'winter', seed: 9001, maxPlayers: 4, water: 0.30, rock: 0.64, forest: 0.63, desc: 'Große, zerklüftete Eislandschaft mit engen Pässen.' },
     { id: 'aschefeld', name: 'Aschefeld', size: 80, biome: 'wasteland', seed: 666, maxPlayers: 4, water: 0.27, rock: 0.69, forest: 0.70, desc: 'Kleine, verbrannte Vulkanebene mit Lavaseen. Schnelle Gefechte.' },
     { id: 'inselkette', name: 'Seenplatte', size: 112, biome: 'temperate', seed: 2024, maxPlayers: 4, water: 0.40, rock: 0.74, forest: 0.66, desc: 'Viele Seen und Flüsse. Schwebe- und Lufteinheiten im Vorteil.' },
+    { id: 'spiegeltal', name: 'Spiegeltal', size: 96, biome: 'temperate', seed: 3141, maxPlayers: 4, water: 0.28, rock: 0.69, forest: 0.66, symmetric: true, desc: 'Vollständig gespiegelte Turnierkarte: exakt gleiche Bedingungen an jeder Startposition.' },
+    { id: 'eiskreuz', name: 'Eiskreuz', size: 104, biome: 'winter', seed: 2718, maxPlayers: 4, water: 0.31, rock: 0.66, forest: 0.64, symmetric: true, desc: 'Gespiegelte Winterkarte mit gefrorenen Seen und engen Felspässen.' },
+    { id: 'glutkessel', name: 'Glutkessel', size: 112, biome: 'wasteland', seed: 8128, maxPlayers: 4, water: 0.31, rock: 0.67, forest: 0.72, desc: 'Großes Vulkanbecken mit Lavaströmen. Schweber und Flieger kürzen ab.' },
     { id: 'zufall', name: 'Zufallskarte', size: 96, biome: 'random', seed: 0, maxPlayers: 4, water: 0.28, rock: 0.68, forest: 0.66, desc: 'Bei jedem Spiel eine neue Karte.' },
   ];
 
@@ -94,11 +97,26 @@
         const ang = Math.atan2(cy - s.ty, cx - s.tx) + angOff;
         fields.push({ tx: Math.round(s.tx + Math.cos(ang) * 11), ty: Math.round(s.ty + Math.sin(ang) * 11), r: 4 });
       }
-      fields.push({ tx: cx, ty: cy, r: 5 });
-      const mids = [[cx, inset], [cx, h - 1 - inset], [inset, cy], [w - 1 - inset, cy]];
-      for (const m of mids) fields.push({ tx: m[0] + rng.int(-4, 4), ty: m[1] + rng.int(-3, 3), r: 4 });
+      const sym = !!def.symmetric && !opts.starts;
+      if (sym) {
+        // nur das linke obere Viertel planen, der Rest entsteht durch Spiegelung
+        fields.push({ tx: cx - 3, ty: cy - 3, r: 5 });
+        fields.push({ tx: cx - 3, ty: inset, r: 4 }, { tx: inset, ty: cy - 3, r: 4 });
+      } else {
+        fields.push({ tx: cx, ty: cy, r: 5 });
+        const mids = [[cx, inset], [cx, h - 1 - inset], [inset, cy], [w - 1 - inset, cy]];
+        for (const m of mids) fields.push({ tx: m[0] + rng.int(-4, 4), ty: m[1] + rng.int(-3, 3), r: 4 });
+      }
       if (opts.extraFields) for (const f of opts.extraFields) fields.push({ tx: f[0], ty: f[1], r: f[2] || 4 });
       this.oreCenters = fields;
+      // Neutrale, eroberbare Gebäude (punktsymmetrisch verteilt)
+      this.neutralSpots = [];
+      if (opts.neutrals && !opts.starts) {
+        const dx0 = Math.round(inset + (cx - inset) * 0.62) - 1, dy0 = Math.round(inset + (cy - inset) * 0.25) - 1;
+        for (const [mx, my] of [[0, 0], [1, 0], [0, 1], [1, 1]]) this.neutralSpots.push({ id: 'n_derrick', tx: mx ? w - 2 - dx0 : dx0, ty: my ? h - 2 - dy0 : dy0 });
+        const oy0 = Math.round(cy - h * 0.2) - 1;
+        this.neutralSpots.push({ id: 'n_outpost', tx: cx - 1, ty: oy0 }, { id: 'n_outpost', tx: cx - 1, ty: h - 2 - oy0 });
+      }
 
       const flatten = (tx, ty, r, str) => {
         for (let y = ty - r; y <= ty + r; y++) for (let x = tx - r; x <= tx + r; x++) {
@@ -120,6 +138,7 @@
       };
       for (const s of this.starts) flatten(s.tx, s.ty, 11, 1);
       for (const f of fields) flatten(f.tx, f.ty, f.r + 2, 0.95);
+      for (const n of this.neutralSpots) flatten(n.tx + 1, n.ty + 1, 4, 1);
       for (const s of allStarts) corridor(s.tx, s.ty, cx, cy, 3);
       for (let i = 0; i < allStarts.length; i++) {
         const a = allStarts[i], b = allStarts[(i + 2) % allStarts.length];
@@ -129,6 +148,11 @@
         let best = null, bd = 1e9;
         for (const s of allStarts) { const d = Math.hypot(s.tx - f.tx, s.ty - f.ty); if (d < bd) { bd = d; best = s; } }
         corridor(f.tx, f.ty, best.tx, best.ty, 2);
+      }
+      for (const n of this.neutralSpots) {
+        let best = null, bd = 1e9;
+        for (const s of allStarts) { const d = Math.hypot(s.tx - n.tx, s.ty - n.ty); if (d < bd) { bd = d; best = s; } }
+        corridor(n.tx + 1, n.ty + 1, best.tx, best.ty, 2);
       }
       if (opts.flatten) for (const f of opts.flatten) flatten(f[0], f[1], f[2], 1);
       if (opts.corridors) for (const c of opts.corridors) corridor(c[0], c[1], c[2], c[3], c[4] || 3);
@@ -145,7 +169,7 @@
         this.type[i] = t;
       }
       // Bäume
-      const near = (x, y, r) => { for (const s of this.starts) if (Math.hypot(s.tx - x, s.ty - y) < r) return true; for (const f of fields) if (Math.hypot(f.tx - x, f.ty - y) < f.r + 2.5) return true; return false; };
+      const near = (x, y, r) => { for (const s of this.starts) if (Math.hypot(s.tx - x, s.ty - y) < r) return true; for (const f of fields) if (Math.hypot(f.tx - x, f.ty - y) < f.r + 2.5) return true; for (const n of this.neutralSpots) if (Math.hypot(n.tx + 1 - x, n.ty + 1 - y) < 4) return true; return false; };
       for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
         const i = y * w + x;
         if (this.type[i] !== TT.GROUND) continue;
@@ -165,7 +189,24 @@
           this.ore[i] = Math.round(U.lerp(420, 140, d / f.r) + rng.range(-40, 40));
         }
       }
+      if (sym) this.mirrorQuadrants();
       this.ensureConnectivity();
+    }
+    // Spiegelt das linke obere Viertel auf die ganze Karte (faire, symmetrische Karten)
+    mirrorQuadrants() {
+      const w = this.w, h = this.h;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const sx = Math.min(x, w - 1 - x), sy = Math.min(y, h - 1 - y);
+        if (sx === x && sy === y) continue;
+        const i = y * w + x, j = sy * w + sx;
+        this.type[i] = this.type[j]; this.ore[i] = this.ore[j]; this.elev[i] = this.elev[j];
+      }
+      this.blossoms = [];
+      for (let i = 0; i < w * h; i++) if (this.type[i] === TT.BLOSSOM) {
+        const tx = i % w, ty = (i / w) | 0;
+        this.blossoms.push({ tx, ty, r: Math.hypot(tx - w / 2, ty - h / 2) < 8 ? 5 : 4 });
+      }
+      this.oreCenters = this.blossoms.map(b => ({ tx: b.tx, ty: b.ty, r: b.r }));
     }
 
     // Unerreichbare Taschen in Felsen umwandeln, damit Wegfindung nicht ins Leere läuft
@@ -204,13 +245,15 @@
       }
       return null;
     }
+    // Kristallit wächst rund um die Kristallblüten nach (trägt dauerhaft etwa 3 Sammler pro Feld)
     growOre(rng) {
       for (const b of this.blossoms) {
-        for (let k = 0; k < 3; k++) {
-          const x = b.tx + rng.int(-b.r, b.r), y = b.ty + rng.int(-b.r, b.r);
-          if (!this.inBounds(x, y) || Math.hypot(x - b.tx, y - b.ty) > b.r + 0.5) continue;
+        for (let k = 0; k < 5; k++) {
+          const a = rng.next() * 6.283, d = 0.8 + Math.sqrt(rng.next()) * (b.r - 0.3);
+          const x = Math.round(b.tx + Math.cos(a) * d), y = Math.round(b.ty + Math.sin(a) * d);
+          if (!this.inBounds(x, y)) continue;
           const i = this.idx(x, y); if (this.type[i] > 1 || this.bld[i]) continue;
-          if (this.ore[i] < 450) { this.ore[i] = Math.min(450, this.ore[i] + 30); this.oreVersion++; }
+          if (this.ore[i] < 450) { this.ore[i] = Math.min(450, this.ore[i] + 38); this.oreVersion++; }
         }
       }
     }

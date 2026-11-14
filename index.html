@@ -13,8 +13,11 @@
   <div class="menu-box">
     <div class="logo"><span class="logo-a">KRISTALL</span><span class="logo-b">FRONT</span></div>
     <div class="logo-sub">Echtzeit-Strategie · Krieg um das Kristallit</div>
+    <button class="mbtn hidden" id="btn-load">Spielstand laden</button>
+    <div class="load-info hidden" id="load-info"></div>
     <button class="mbtn" data-go="campaign">Kampagne</button>
     <button class="mbtn" data-go="skirmish">Gefecht gegen Bots</button>
+    <button class="mbtn" data-go="codex">Kompendium</button>
     <button class="mbtn" data-go="settings">Einstellungen</button>
     <button class="mbtn" data-go="help">Steuerung &amp; Hilfe</button>
     <div class="menu-foot">Für Maus &amp; Tastatur optimiert · v1.0</div>
@@ -69,6 +72,8 @@
           <label>Spieltempo <select id="sk-speed"><option value="0.75">Langsam</option><option value="1" selected>Normal</option><option value="1.35">Schnell</option><option value="1.7">Sehr schnell</option></select></label>
           <label>Start mit <select id="sk-start"><option value="standard" selected>Basis + Trupp</option><option value="mcv">Nur Bau-Fahrzeug</option></select></label>
           <label><input type="checkbox" id="sk-sw" checked> Superwaffen</label>
+          <label><input type="checkbox" id="sk-neutral" checked> Neutrale Gebäude</label>
+          <label><input type="checkbox" id="sk-crates" checked> Bonuskisten</label>
           <label><input type="checkbox" id="sk-reveal"> Karte aufgedeckt</label>
         </div>
         <div class="row right">
@@ -94,6 +99,16 @@
       <label><input type="checkbox" id="set-classic"> Klassische Steuerung (Linksklick = Befehl, Rechtsklick = Abwählen)</label>
     </div>
     <div class="row right"><button class="btn primary" data-go="back">Zurück</button></div>
+  </div>
+</div>
+
+<!-- ===== Kompendium ===== -->
+<div id="scr-codex" class="screen">
+  <div class="panel wide codex">
+    <h1>Kompendium</h1>
+    <div id="codex-tabs" class="camp-tabs four"></div>
+    <div id="codex-body" class="codex-body"></div>
+    <div class="row right"><button class="btn primary" data-go="menu">Zurück</button></div>
   </div>
 </div>
 
@@ -133,6 +148,7 @@
           <li><b>Strg + 1–9</b> – Gruppe speichern, <b>1–9</b> – Gruppe wählen (2× = Kamera)</li>
           <li><b>H</b> – zur Basis, <b>Leertaste</b> – zur letzten Meldung</li>
           <li><b>R</b> – Reparaturmodus, <b>X</b> – Verkaufsmodus</li>
+          <li><b>F</b> – Radarscan, <b>G</b> – Spezialfähigkeit der Fraktion</li>
           <li><b>Tab</b> – nächste Bauleiste, <b>Esc</b> – Pause / Abbrechen</li>
           <li><b>+ / −</b> – Spieltempo</li>
         </ul>
@@ -143,6 +159,9 @@
           <li>Gebäude müssen in der Nähe bestehender Gebäude errichtet werden.</li>
           <li>Einheiten sammeln Erfahrung (★) und werden stärker.</li>
           <li>Schwere Fahrzeuge überrollen feindliche Infanterie.</li>
+          <li><b>Ingenieure</b> erobern per Rechtsklick neutrale Gebäude (Kristallbohrer, Beobachtungsposten) und stark beschädigte feindliche Gebäude; eigene Gebäude reparieren sie sofort.</li>
+          <li><b>Bonuskisten</b> im Gefecht mit einer Bodeneinheit einsammeln.</li>
+          <li>Spielstände lassen sich im Pausenmenü speichern und laden.</li>
           <li>Gruppen mit Angriffsbefehl bleiben zusammen (Tempo der langsamsten Einheit).</li>
           <li>Schadensarten: MG gegen Infanterie, Kanonen/Raketen gegen Fahrzeuge, Flak gegen Luft.</li>
         </ul>
@@ -189,6 +208,9 @@
       <div class="col">
         <button class="mbtn" id="pz-resume">Fortsetzen</button>
         <label class="inline">Lautstärke <input type="range" id="pz-vol" min="0" max="1" step="0.05"></label>
+        <button class="mbtn" id="pz-save">Spiel speichern</button>
+        <button class="mbtn" id="pz-load">Spielstand laden</button>
+        <div class="load-info" id="pz-info"></div>
         <button class="mbtn" id="pz-restart">Neu starten</button>
         <button class="mbtn" id="pz-quit">Aufgeben &amp; Hauptmenü</button>
       </div>
@@ -203,13 +225,6 @@
     </div>
   </div>
   <div id="loading" class="overlay hidden"><div class="loadbox"><div class="spinner"></div>Schlachtfeld wird erzeugt …</div></div>
-  <div id="ov-brief" class="overlay hidden">
-    <div class="panel">
-      <h1 id="ib-title"></h1>
-      <div id="ib-text" class="brief-text"></div>
-      <div class="row right"><button class="btn primary" id="ib-ok">Weiter</button></div>
-    </div>
-  </div>
 </div>
 
 <script src="js/util.js"></script>
@@ -219,6 +234,7 @@
 <script src="js/entities.js"></script>
 <script src="js/game.js"></script>
 <script src="js/ai.js"></script>
+<script src="js/save.js"></script>
 <script src="js/gfx.js"></script>
 <script src="js/draw.js"></script>
 <script src="js/render.js"></script>
@@ -226,6 +242,7 @@
 <script src="js/campaign.js"></script>
 <script src="js/campaign2.js"></script>
 <script src="js/hud.js"></script>
+<script src="js/codex.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

@@ -23,6 +23,7 @@
       s = s / (0.35 + eff);
       if (o.isBuilding) s += o.def.weapons.length ? 2 * T : 6 * T;
       else if (o.def.weapons.length === 0) s += 2.5 * T;
+      if (e.minRangePx && d < e.minRangePx) s += 30 * T;
       if (s < bs) { bs = s; best = o; }
     });
     return best;
@@ -78,6 +79,7 @@
       this.anim = Math.random() * 10; this.cloaked = false; this.moving = false;
       this.alt = this.isAir ? 34 : 0;
       this.dead = false; this.selected = false;
+      this.minRangePx = def.weapons.length && def.weapons.every(w => w.minRange) ? Math.min(...def.weapons.map(w => w.minRange)) * T : 0;
     }
     hpMult() { const m = this.owner.mods; return (m.hp[this.def.armor] || 1) * RANK_HP[this.rank]; }
     get baseSpeed() { const m = this.owner.mods; return this.def.speed * T * (m.speed[this.def.armor] || 1) * (m.speed.all || 1) * (this.speedMult || 1); }
@@ -123,6 +125,7 @@
     update(dt) {
       this.px = this.x; this.py = this.y; this.anim += dt;
       const g = this.game;
+      if (this.empUntil > g.time) { this.moving = false; if (this.isAir) this.anim -= dt * 0.8; return; } // lahmgelegt
       let regen = this.owner.mods.regen + (this.rank >= 3 ? 0.015 : 0);
       if (regen > 0 && this.hp < this.maxHp && g.time - this.lastHit > 2.5) this.hp = Math.min(this.maxHp, this.hp + this.maxHp * regen * dt);
       for (let i = 0; i < this.cds.length; i++) this.cds[i] -= dt;
@@ -138,6 +141,17 @@
       if (this.def.harvester) return this.harvThink();
       if (this.def.mcv && this.order.type === 'deploy') { if (!this.path && !this.pathPending) { g.deployMcv(this); } return; }
       const o = this.order;
+      if (this.def.engineer && o.type === 'capture') {
+        const t = o.target;
+        if (!g.canCapture(this, t)) { this.becomeIdle(); return; }
+        const d = targetDist(this, t);
+        if (d < T * 0.95) { g.engineerEnter(this, t); return; }
+        if (!this.path && !this.pathPending) {
+          if (d < T * 2.4 || ++o.tries > 5) { if (d < T * 2.4) g.engineerEnter(this, t); else this.becomeIdle(); }
+          else this.moveTo(t.x, t.y);
+        }
+        return;
+      }
       if (this.target && (this.target.dead || !g.canSee(this.owner, this.target))) this.target = null;
       if (!this.def.weapons.length) { if (o.type === 'move' && !this.path && !this.pathPending) this.becomeIdle(); return; }
       const sight = this.def.sight * T;
@@ -195,8 +209,24 @@
       for (const w of this.def.weapons) if (weaponCanHit(w, t) && d <= w.range * T && !(w.minRange && d < w.minRange * T)) return true;
       return false;
     }
+    // Ziel liegt innerhalb der Mindestreichweite aller passenden Waffen (Artillerie)
+    tooClose(t) {
+      const d = targetDist(this, t); let any = false;
+      for (const w of this.def.weapons) if (weaponCanHit(w, t)) { if (!(w.minRange && d < w.minRange * T)) return false; any = true; }
+      return any;
+    }
     chase(t) {
       if (this.pathPending) return;
+      if (this.tooClose(t)) {
+        // Abstand gewinnen statt in den Gegner hineinzufahren
+        if (!this.path) {
+          let mr = 0; for (const w of this.def.weapons) mr = Math.max(mr, w.minRange || 0);
+          const a = Math.atan2(this.y - t.y, this.x - t.x), r = (mr + 1.5) * T + t.radius;
+          const x = t.x + Math.cos(a) * r, y = t.y + Math.sin(a) * r;
+          if (this.game.map.passablePx(x, y, this.mode)) this.moveTo(x, y);
+        }
+        return;
+      }
       if (!this.path || U.dist(this.goalX, this.goalY, t.x, t.y) > T * 1.5) {
         if (this.isAir) {
           // Flugzeuge nähern sich bis auf Reichweite
@@ -342,7 +372,7 @@
           return;
         }
         case 'return': {
-          let ref = (this.dockRef && !this.dockRef.dead) ? this.dockRef : null;
+          let ref = (this.dockRef && !this.dockRef.dead && this.dockRef.owner === this.owner) ? this.dockRef : null;
           if (!ref) {
             let bd = 1e18;
             for (const b of g.buildings) if (!b.dead && b.owner === this.owner && b.def.role === 'refinery' && b.built >= 1) {
@@ -354,7 +384,7 @@
           this.moveTo(dp.x, dp.y); this.hstate = 'toDock'; this.tries = 0; return;
         }
         case 'toDock': {
-          const ref = this.dockRef; if (!ref || ref.dead) { this.dockRef = null; this.hstate = 'return'; return; }
+          const ref = this.dockRef; if (!ref || ref.dead || ref.owner !== this.owner) { this.dockRef = null; this.hstate = 'return'; return; }
           const dp = this.dockPt || ref.dockPos(); const d = U.dist(this.x, this.y, dp.x, dp.y);
           const close = d < T * 0.7 || (!this.path && !this.pathPending && d < T * 1.8);
           if (close) {
@@ -366,7 +396,7 @@
           return;
         }
         case 'unload': {
-          const ref = this.dockRef; if (!ref || ref.dead) { this.hstate = 'return'; this.dockRef = null; return; }
+          const ref = this.dockRef; if (!ref || ref.dead || ref.owner !== this.owner) { this.hstate = 'return'; this.dockRef = null; return; }
           this.angle = U.rotateTowards(this.angle, -Math.PI / 2, 0.6);
           const amt = Math.min(this.cargo, 70); this.cargo -= amt;
           this.owner.addIncome(amt);
@@ -381,7 +411,7 @@
   // ================= Gebäude =================
   class Building {
     constructor(game, def, owner, tx, ty) {
-      this.game = game; this.id = game.nextId++; this.def = def; this.owner = owner;
+      this.game = game; this.id = game.nextId++; this.def = def; this.owner = owner; this.origOwner = owner;
       this.tx = tx; this.ty = ty; this.w = def.w; this.h = def.h;
       this.x = (tx + def.w / 2) * T; this.y = (ty + def.h / 2) * T; this.px = this.x; this.py = this.y;
       this.isBuilding = true; this.isAir = false;
@@ -394,7 +424,7 @@
       this.dockUser = null; this.spawnHarvester = false;
     }
     refreshHp() { const r = this.hp / this.maxHp; this.maxHp = this.def.hp * 1.4 * this.owner.mods.bldHp; this.hp = this.maxHp * r; }
-    get powered() { return !(this.def.power < 0 && this.owner.lowPower); }
+    get powered() { return !(this.def.power < 0 && this.owner.lowPower) && !(this.empUntil > this.game.time); }
     dockPos(fx, fy) {
       const def = { x: (this.tx + this.w / 2) * T, y: (this.ty + this.h + 0.55) * T };
       if (fx == null) return def;
@@ -419,6 +449,14 @@
           const frac = 0.045 * dt, cost = this.def.cost * 0.3 * frac;
           if (this.owner.credits >= cost) { this.owner.credits -= cost; this.hp = Math.min(this.maxHp, this.hp + this.maxHp * frac); if (Math.random() < dt * 3) g.fx({ k: 'p', x: this.x + (Math.random() - 0.5) * this.w * T * 0.6, y: this.y - 10, vx: 0, vy: -25, life: 0.8, max: 0.8, size: 3, c: '#fde047', add: true, kind: 'wrench' }); }
           else this.repairing = false;
+        }
+      }
+      if (this.def.income && !this.owner.neutral) {
+        this.incT = (this.incT || 0) + dt;
+        if (this.incT >= 2) {
+          this.incT -= 2; this.owner.credits += this.def.income; this.owner.stats.harvested += this.def.income;
+          this.incN = (this.incN || 0) + 1;
+          if (this.incN % 5 === 0) g.fx({ k: 'text', x: this.x, y: this.y - 26, txt: '+' + this.def.income * 5 + ' $', c: '#67e8f9', life: 1.2, max: 1.2 });
         }
       }
       for (let i = 0; i < this.cds.length; i++) this.cds[i] -= dt;

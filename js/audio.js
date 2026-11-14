@@ -54,6 +54,9 @@
     order: () => tone(500, 800, 0.06, 'triangle', 0.1),
     swlaunch: () => { tone(80, 400, 2, 'sawtooth', 0.15); noise(2, 400, 'lowpass', 0.3); },
     swhit: () => { noise(3, 200, 'lowpass', 1.0); tone(50, 15, 2.5, 'sine', 0.9); },
+    capture: () => { tone(500, 1000, 0.18, 'square', 0.1); setTimeout(() => A.ctx && tone(1000, 1500, 0.2, 'square', 0.1), 150); },
+    power: () => { tone(300, 900, 0.35, 'sawtooth', 0.12); noise(0.3, 1500, 'bandpass', 0.2); },
+    crate: () => { tone(900, 1300, 0.1, 'sine', 0.15); setTimeout(() => A.ctx && tone(1300, 1800, 0.14, 'sine', 0.15), 90); },
     alert: () => { tone(880, 880, 0.12, 'square', 0.12); setTimeout(() => A.ctx && tone(660, 660, 0.12, 'square', 0.12), 160); },
   };
   A.play = function (name, vol = 1) {

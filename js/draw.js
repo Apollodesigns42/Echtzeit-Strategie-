@@ -49,7 +49,15 @@
     ctx.fillStyle = P.team; ctx.fillRect(-0.6, -2.2, 1.2, 0.8);
     // Arme + Waffe
     const skin = faction === 'allianz' ? '#c9a27e' : '#1a1a1a';
-    if (gun === 'rocket') {
+    if (gun === 'tool') {
+      // Ingenieur: Warnweste, Werkzeugkoffer, Schraubenschlüssel
+      ctx.fillStyle = '#facc15'; ctx.fillRect(-1.4, -2.3, 0.8, 4.6); ctx.fillRect(0.5, -2.3, 0.8, 4.6);
+      ctx.strokeStyle = body; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(0, -1.6); ctx.lineTo(2.4, -1.8); ctx.moveTo(0, 1.6); ctx.lineTo(2.2, 1.9); ctx.stroke();
+      G.plate(ctx, () => G.rr(ctx, 1.6, -3.4, 3, 2.2, 0.4), '#b91c1c', { bevel: false, ew: 0.3 }); ctx.fillStyle = '#e5e7eb'; ctx.fillRect(2.6, -2.6, 1, 0.5);
+      ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(2.2, 1.9); ctx.lineTo(4.6, 2.3); ctx.stroke();
+      ctx.fillStyle = '#d1d5db'; ctx.beginPath(); ctx.arc(4.8, 2.3, 0.7, 0, 7); ctx.fill();
+      ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(2.4, -1.8, 0.45, 0, 7); ctx.arc(2.2, 1.9, 0.45, 0, 7); ctx.fill();
+    } else if (gun === 'rocket') {
       G.barrel(ctx, -2.5, 5.5, -1.6, 0.9, '#556b2f'); ctx.fillStyle = '#222'; ctx.fillRect(5.2, -2.5, 0.6, 1.8);
       ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(1.6, -0.9, 0.6, 0, 7); ctx.fill();
     } else {
@@ -60,12 +68,12 @@
       ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(2.3, -0.1, 0.45, 0, 7); ctx.arc(2.6, 0.4, 0.45, 0, 7); ctx.fill();
     }
     // Helm
-    const helm = faction === 'allianz' ? U.mix('#5a6650', P.team, 0.15) : '#1c1c20';
+    const helm = gun === 'tool' ? '#eab308' : faction === 'allianz' ? U.mix('#5a6650', P.team, 0.15) : '#1c1c20';
     G.dome(ctx, 0.2, 0, 1.45, helm);
     if (faction === 'schatten') { ctx.fillStyle = P.team; ctx.fillRect(0.9, -0.8, 0.5, 1.6); }
     else { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(1.1, -0.9, 0.35, 1.8); }
   }
-  function bug(ctx, P, big, frame) {
+  function bug(ctx, P, big, frame, eng) {
     const s = big ? 1.35 : 1;
     ctx.save(); ctx.scale(s, s);
     const ph = frame * PI / 2;
@@ -78,7 +86,8 @@
     G.plate(ctx, () => { ctx.beginPath(); ctx.ellipse(0.6, 0, 1.4, 1.3, 0, 0, 7); }, P.hull, { r: 1.6, ew: 0.35, bevel: false });
     G.dome(ctx, 2.2, 0, 0.95, U.shade(P.hull, 0.15));
     ctx.strokeStyle = '#e9d5ff'; ctx.lineWidth = 0.35; ctx.beginPath(); ctx.moveTo(2.9, -0.5); ctx.lineTo(3.8, -0.9); ctx.moveTo(2.9, 0.5); ctx.lineTo(3.8, 0.9); ctx.stroke();
-    if (big) { G.glow(ctx, -1.9, 0, 2, '#a3e635', 0.8); G.dome(ctx, -1.9, 0, 1.1, '#84cc16'); }
+    if (eng) { G.glow(ctx, -1.9, 0, 2.6, '#22d3ee', 0.9); G.dome(ctx, -1.9, 0, 1.2, '#06b6d4'); ctx.strokeStyle = '#a5f3fc'; ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(2.9, -0.6); ctx.quadraticCurveTo(5, -2.2, 5.2, -0.4); ctx.moveTo(2.9, 0.6); ctx.quadraticCurveTo(5, 2.2, 5.2, 0.4); ctx.stroke(); }
+    else if (big) { G.glow(ctx, -1.9, 0, 2, '#a3e635', 0.8); G.dome(ctx, -1.9, 0, 1.1, '#84cc16'); }
     else { ctx.fillStyle = P.team; ctx.beginPath(); ctx.arc(-1.9, 0, 0.6, 0, 7); ctx.fill(); }
     ctx.fillStyle = P.glow; ctx.beginPath(); ctx.arc(2.5, -0.4, 0.3, 0, 7); ctx.arc(2.5, 0.4, 0.3, 0, 7); ctx.fill();
     ctx.restore();
@@ -127,7 +136,15 @@
         ctx.fillStyle = '#fca5a5'; ctx.fillRect(10.5, -2.6, 0.8, 1); ctx.fillRect(10.5, 1.6, 0.8, 1);
       },
       tx: -2, tw: 14, th: 8,
-      turret(ctx, P) { G.dome(ctx, 0, 0, 2.3, '#262629'); G.barrel(ctx, 0.5, 8.5, -0.8, 0.55, '#202020'); G.barrel(ctx, 0.5, 8.5, 0.8, 0.55, '#202020'); },
+      turret(ctx, P) {
+        if (def.draw.aa) {
+          for (const y of [-2.4, -0.8, 0.8, 2.4]) G.barrel(ctx, 0.5, 9.5, y, 0.45, '#2a2a2e');
+          G.plate(ctx, () => G.rr(ctx, -3.5, -3.4, 6, 6.8, 1), '#2e2e34', { r: 5 });
+          ctx.fillStyle = P.team; ctx.fillRect(-3, -0.5, 2, 1); G.light(ctx, -1.5, -2.4, 0.5, '#ef4444');
+          return;
+        }
+        G.dome(ctx, 0, 0, 2.3, '#262629'); G.barrel(ctx, 0.5, 8.5, -0.8, 0.55, '#202020'); G.barrel(ctx, 0.5, 8.5, 0.8, 0.55, '#202020');
+      },
     }),
     tank: (def) => {
       const sleek = def.draw.sleek;
@@ -155,6 +172,14 @@
         },
         tx: -1, tw: 34, th: 20,
         turret(ctx, P) {
+          if (def.draw.aa) {
+            // Zwillingsflak mit Radarschüssel
+            for (const y of [-3.4, 3.4]) { G.barrel(ctx, 2, 14, y, 0.8, '#4b5563'); G.barrel(ctx, 2, 14, y + (y < 0 ? 1.5 : -1.5), 0.8, '#4b5563'); ctx.fillStyle = '#111'; ctx.fillRect(13.4, y - 1.2, 1.2, 2.4 + 0); }
+            G.plate(ctx, () => G.poly(ctx, [[5, -5.6], [-6, -5.6], [-7.5, -3], [-7.5, 3], [-6, 5.6], [5, 5.6]]), P.hull, { mat: P.mat, r: 8 });
+            G.dome(ctx, -3.5, 0, 2.8, '#d1d5db', 2.2); ctx.strokeStyle = '#4b5563'; ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(-3.5, 0); ctx.lineTo(-1.2, 0); ctx.stroke();
+            stripe(ctx, 1, -5.4, 3, 10.8, P.team);
+            return;
+          }
           if (sleek) {
             G.barrel(ctx, 3, 15, 0, 1.3, '#2a2a30');
             for (let i = 0; i < 3; i++) { ctx.fillStyle = '#3f3f46'; ctx.fillRect(6 + i * 2.6, -1.8, 1, 3.6); }
@@ -281,6 +306,12 @@
         },
         tx: 1, tw: 22, th: 14,
         turret(ctx, P) {
+          if (def.draw.aa) {
+            G.glow(ctx, 0, 0, 6, '#22d3ee', 0.5);
+            for (const [x, y, h] of [[3, -2.2, 7], [3, 2.2, 7], [5.5, 0, 9]]) { ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 2); crystal(ctx, 0, 0, h, '#22d3ee'); ctx.restore(); }
+            G.dome(ctx, -1, 0, 2.6, U.shade(P.hull, 0.2));
+            return;
+          }
           if (arty) { G.glow(ctx, 0, 0, 7, '#a3e635', 0.5); G.dome(ctx, 0, 0, 4.6, '#65a30d'); ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.arc(-1.4, -1.6, 1.2, 0, 7); ctx.fill(); G.barrel(ctx, 3, 9, 0, 1.2, P.metal); }
           else {
             G.plate(ctx, () => G.poly(ctx, [[9, 0], [2, -2.6], [-3, -2], [-3, 2], [2, 2.6]]), '#c4b5fd', { r: 8, hi: 0.4 });
@@ -465,7 +496,7 @@
     }
     if (A.live) { ctx.save(); ctx.translate(0, -alt + bob); A.live(ctx, o, P); ctx.restore(); }
   }
-  const SQUAD_LAYOUT = { 2: [[-1, -4], [-1, 4]], 3: [[3, 0], [-3, -5], [-3, 5]], 4: [[3, -3.5], [3, 3.5], [-4, -3.5], [-4, 3.5]], 5: [[4, 0], [0, -5], [0, 5], [-5, -2.5], [-5, 2.5]] };
+  const SQUAD_LAYOUT = { 1: [[0, 0]], 2: [[-1, -4], [-1, 4]], 3: [[3, 0], [-3, -5], [-3, 5]], 4: [[3, -3.5], [3, 3.5], [-4, -3.5], [-4, 3.5]], 5: [[4, 0], [0, -5], [0, 5], [-5, -2.5], [-5, 2.5]] };
   function drawSquad(ctx, def, o) {
     const d = def.draw, n = d.n, lay = SQUAD_LAYOUT[n] || SQUAD_LAYOUT[3];
     const cs = Math.cos(o.angle), sn = Math.sin(o.angle);
@@ -475,7 +506,7 @@
       const x = lx * cs - ly * sn, y = lx * sn + ly * cs;
       const frame = o.moving ? (Math.floor((o.anim || 0) * 8 + i * 1.3) % 4) : 0;
       const key = def.id + '|' + o.color + '|s' + frame;
-      const spr = G.sprite(key, swarm ? 14 : 14, swarm ? 14 : 12, (c) => { const P = pal(def.faction, o.color); c.scale(1.15, 1.15); if (swarm) bug(c, P, d.big, frame); else soldier(c, P, d.gun, frame, def.faction); }, 4);
+      const spr = G.sprite(key, swarm ? 14 : 14, swarm ? 14 : 12, (c) => { const P = pal(def.faction, o.color); c.scale(1.15, 1.15); if (swarm) bug(c, P, d.big, frame, d.eng); else soldier(c, P, d.gun, frame, def.faction); }, 4);
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(x + 1.2, y + 1.6, swarm ? 4 : 3.2, swarm ? 2.8 : 2.4, o.angle, 0, 7); ctx.fill();
       G.blit(ctx, spr, x, y, swarm ? o.angle : o.turret);
     }
@@ -567,8 +598,57 @@
     ctx.strokeStyle = B.team; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.ellipse(x, y - h * 0.5, rx * 0.92, ry + h * 0.45, 0, 0.2, PI - 0.2); ctx.stroke();
   }
 
+  // Neutrale, eroberbare Gebäude
+  function neutralStatic(ctx, def, B, W, H) {
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(3, 4, W - 1, H - 1);
+    G.plate(ctx, () => G.rr(ctx, 0.8, 0.8, W - 1.6, H - 1.6, 1.5), '#56524a', { mat: 'concrete', matAlpha: 0.9, ew: 0.6 });
+    G.hazard(ctx, 2, H - 4.5, W - 4, 2.5, 2);
+    if (def.role === 'derrick') {
+      shadowRect(ctx, 5, 34, 24, 20, 9);
+      const b = block(ctx, B, 5, 34, 24, 20, 9, { windows: false, roof: '#8d8676', wall: '#6f695c', wallD: '#3d392f' });
+      vent(ctx, b.rx + 3, b.ry + 3, 8, 6); ctx.fillStyle = B.team; ctx.fillRect(b.rx + 1, b.ry + 16, 22, 1.6);
+      cylinder(ctx, B, 15, 30, 5, 10, '#7a7466', { rings: 3, top: '#2a2722' });
+      // Bohrschacht mit Kristallglühen
+      ctx.fillStyle = '#12100d'; ctx.beginPath(); ctx.ellipse(44, 46, 11, 6, 0, 0, 7); ctx.fill();
+      G.glow(ctx, 44, 46, 10, '#22d3ee', 0.55);
+      // Gitterturm
+      const bx = 44, by = 48, top = 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; G.poly(ctx, [[bx + 8, by], [bx + 34, by - 14], [bx + 30, by - 20], [bx + 4, by - 2]]); ctx.fill();
+      ctx.strokeStyle = '#1c1a16'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(bx - 10, by); ctx.lineTo(bx - 2, top); ctx.moveTo(bx + 10, by); ctx.lineTo(bx + 2, top); ctx.stroke();
+      ctx.strokeStyle = '#a39b86'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.strokeStyle = '#6b6555'; ctx.lineWidth = 0.9;
+      for (let i = 0; i < 5; i++) { const t0 = i / 5, t1 = (i + 1) / 5, y0 = by - (by - top) * t0, y1 = by - (by - top) * t1, w0 = 10 - 8 * t0, w1 = 10 - 8 * t1; ctx.beginPath(); ctx.moveTo(bx - w0, y0); ctx.lineTo(bx + w1, y1); ctx.moveTo(bx + w0, y0); ctx.lineTo(bx - w1, y1); ctx.moveTo(bx - w1, y1); ctx.lineTo(bx + w1, y1); ctx.stroke(); }
+      G.plate(ctx, () => G.rr(ctx, bx - 4, top - 3, 8, 4, 0.8), '#8d8676', { bevel: true, ew: 0.4 });
+      pipe(ctx, 29, 46, 36, 46, 1.4, '#6b6555');
+    } else {
+      shadowRect(ctx, 6, 34, 52, 22, 9);
+      const b = block(ctx, B, 6, 34, 52, 22, 9, { windows: true, roof: '#8d8676', wall: '#6f695c', wallD: '#3d392f' });
+      vent(ctx, b.rx + 3, b.ry + 4, 9, 6); for (let i = 0; i < 5; i++) G.dome(ctx, 10 + i * 4.2, 58, 2.2, '#a8916a', 1.4);
+      shadowRect(ctx, 24, 16, 20, 18, 30);
+      const t = block(ctx, B, 24, 16, 20, 18, 30, { windows: '#fde68a', roof: '#9a927f', wall: '#7b7566', wallD: '#3d392f' });
+      ctx.fillStyle = B.team; ctx.fillRect(t.rx, t.ry + 15.5, 20, 2); ctx.fillRect(b.rx + 1, b.ry + 18, 50, 1.6);
+      antenna(ctx, t.rx + 16, t.ry + 4, 12);
+    }
+  }
+  function neutralLive(ctx, def, o, B, W, H) {
+    const an = o.anim || 0;
+    if (def.role === 'derrick') {
+      const y = 14 + (Math.sin(an * 2.2) * 0.5 + 0.5) * 26;
+      ctx.fillStyle = '#2a2722'; ctx.fillRect(43, y, 2, 48 - y - 2);
+      G.plate(ctx, () => G.rr(ctx, 40.5, y - 2, 7, 4, 0.8), '#facc15', { bevel: true, ew: 0.4 });
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; G.glow(ctx, 44, 46, 8 + Math.sin(an * 2.2) * 3, '#22d3ee', 0.4); ctx.restore();
+      if (Math.sin(an * 3) > 0) G.light(ctx, 44, 0, 1, B.team);
+    } else {
+      ctx.save(); ctx.translate(31, -10); const s2 = Math.cos(an * 1.5);
+      const g = ctx.createLinearGradient(-6, 0, 6, 0); g.addColorStop(0, '#9ca3af'); g.addColorStop(0.5 + s2 * 0.3, '#f9fafb'); g.addColorStop(1, '#6b7280');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, 6 * Math.abs(s2) + 1.2, 5.5, 0, 0, 7); ctx.fill(); ctx.strokeStyle = '#4b5563'; ctx.lineWidth = 0.6; ctx.stroke();
+      ctx.restore();
+      if (Math.sin(an * 3) > 0.2) G.light(ctx, 40, -22, 0.9, B.team);
+    }
+  }
   // Statischer Teil eines Gebäudes (wird zwischengespeichert)
   function buildingStatic(ctx, def, B, W, H) {
+    if (def.neutral) return neutralStatic(ctx, def, B, W, H);
     const st = bstyle(def.faction), role = def.role;
     // Fundament
     if (st === 'organic') {
@@ -768,6 +848,7 @@
   }
   // Animierte Teile (live)
   function buildingLive(ctx, def, o, B, W, H) {
+    if (def.neutral) return neutralLive(ctx, def, o, B, W, H);
     const st = bstyle(def.faction), role = def.role, an = o.anim || 0, sleek = st === 'sleek';
     const blink = (x, y, c, ph) => { if (Math.sin(an * 3 + (ph || 0)) > 0.3) G.light(ctx, x, y, 0.9, c); };
     if (st === 'organic') {
@@ -867,10 +948,10 @@
       }
     }, 3);
   }
-  function hasTurret(def) { const st = bstyle(def.faction); if (st === 'organic' || !def.role.startsWith('tower')) return false; return !(st === 'sleek' && def.role === 'tower_av'); }
+  function hasTurret(def) { if (def.neutral) return false; const st = bstyle(def.faction); if (st === 'organic' || !def.role.startsWith('tower')) return false; return !(st === 'sleek' && def.role === 'tower_av'); }
   // ctx steht in der linken oberen Ecke der Grundfläche
   function drawBuilding(ctx, def, o) {
-    const W = def.w * T, H = def.h * T, B = bpal(def.faction, o.color);
+    const W = def.w * T, H = def.h * T, B = bpal(def.neutral ? 'allianz' : def.faction, o.color);
     const M = 18;
     const spr = G.sprite(def.id + '|' + o.color + '|B', W + M, H + SP + M, (c) => { c.translate(-(W + M) / 2, -(H + SP + M) / 2 + SP); buildingStatic(c, def, B, W, H); }, 2);
     ctx.drawImage(spr.cv, 0, -SP, W + M, H + SP + M);
@@ -928,6 +1009,20 @@
     ctx.drawImage(G.flare('#67e8f9'), x - 30, y - 50, 60, 60); ctx.restore();
   }
 
+  function drawCrate(ctx, x, y, t) {
+    const spr = G.sprite('crate', 22, 22, (c) => {
+      c.fillStyle = 'rgba(0,0,0,0.4)'; c.fillRect(-6, -3, 14, 12);
+      const g = c.createLinearGradient(0, 0, 0, 7); g.addColorStop(0, '#7c5a2e'); g.addColorStop(1, '#4a3418'); c.fillStyle = g; c.fillRect(-7, 0, 14, 7);
+      G.plate(c, () => G.rr(c, -7, -9, 14, 10, 0.8), '#b08442', { mat: 'concrete', matAlpha: 0.5, r: 12 });
+      c.strokeStyle = '#5b4220'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(-7, -4); c.lineTo(7, -4); c.moveTo(0, -9); c.lineTo(0, 1); c.stroke();
+      c.strokeStyle = '#facc15'; c.lineWidth = 1.2; c.strokeRect(-6.4, -8.4, 12.8, 8.8);
+      c.fillStyle = '#facc15'; c.font = 'bold 6px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('?', 0, -4);
+    }, 3);
+    const bob = Math.sin(t * 3 + x) * 1.2;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 + 0.2 * Math.sin(t * 4 + x); ctx.drawImage(G.flare('#facc15'), x - 16, y - 16, 32, 32); ctx.restore();
+    ctx.drawImage(spr.cv, x - 11, y - 11 + bob, 22, 22);
+  }
+
   // ---------- Symbolbilder (Seitenleiste) ----------
   const cameoCache = new Map();
   function cameo(def, color) {
@@ -963,5 +1058,5 @@
     return cv;
   }
 
-  RTS.draw = { drawUnit, drawBuilding, drawCrystals, drawBlossom, cameo, hullColor, SP, pal };
+  RTS.draw = { drawUnit, drawBuilding, drawCrystals, drawBlossom, drawCrate, cameo, hullColor, SP, pal };
 })();

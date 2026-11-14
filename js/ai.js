@@ -7,6 +7,8 @@
     a_rifle: 3, a_rocket: 2.2, a_jeep: 1.5, a_tank: 4, a_arty: 1.2, a_epic: 1.4, a_air: 1,
     s_militia: 3, s_flamer: 2, s_rocket: 2.2, s_buggy: 2, s_tank: 4, s_arty: 1.3, s_epic: 1.3, s_air: 1,
     v_drone: 2.5, v_spitter: 3.2, v_glider: 2, v_prism: 4.2, v_spore: 1.2, v_epic: 1.4, v_air: 1,
+    // Ingenieure und Flak werden gezielt nach Bedarf gebaut
+    a_eng: 0, s_eng: 0, v_eng: 0, a_flak: 0, s_flak: 0, v_flak: 0,
   };
 
   class AI {
@@ -43,6 +45,7 @@
         if (spot) { u.order = { type: 'deploy' }; u.moveTo((spot.tx + 1.5) * T, (spot.ty + 1.5) * T); }
       }
       if (!this.opts.noBuild) {
+        this.manageRecovery(myUnits);
         this.manageConstruction();
         this.manageDefense();
       }
@@ -50,6 +53,9 @@
       this.manageResearch();
       this.manageRepair();
       this.manageArmy(myUnits);
+      this.manageEngineers(myUnits);
+      this.managePowers(myUnits);
+      p.reserve = this.saveFor || 0;
       this.manageSuperweapon();
     }
 
@@ -58,7 +64,7 @@
       const p = this.p, c = (r) => p.count(r), time = this.g.time, hard = this.level === 'hard' || this.level === 'brutal';
       const wants = [
         ['power', c('power') < 1],
-        ['refinery', c('refinery') < 1],
+        ['refinery', c('refinery') < 1 || this.noHarvesters],
         ['barracks', c('barracks') < 1],
         ['factory', c('factory') < 1],
         ['refinery', c('refinery') < 2],
@@ -68,7 +74,7 @@
         ['refinery', c('refinery') < 3 && hard && time > 360],
         ['barracks', c('barracks') < 2 && p.credits > 2500 && time > 400],
         ['factory', c('factory') < 2 && p.credits > 3500 && time > 500],
-        ['sw', c('sw') < 1 && this.lv.sw && time > 700 && p.credits > 4000 && this.g.cfg.superweapons !== false],
+        ['sw', c('sw') < 1 && this.lv.sw && time > (hard ? 600 : 780) && p.credits > 800 && this.g.cfg.superweapons !== false],
       ];
       const margin = p.power.prod - p.power.use;
       for (const [role, cond] of wants) {
@@ -163,9 +169,9 @@
 
     // ---- Produktion ----
     pickUnit(cat) {
-      const p = this.p; const items = D.itemsFor(p.faction, cat).filter(u => !u.harvester && !u.mcv && p.reqMet(u));
+      const p = this.p; const items = D.itemsFor(p.faction, cat).filter(u => !u.harvester && !u.mcv && p.reqMet(u) && UNIT_WEIGHTS[u.id] !== 0);
       if (!items.length) return null;
-      let tot = 0; const ws = items.map(u => { let w = UNIT_WEIGHTS[u.id] || 1; if (this.g.time < 300 && u.cost > 1500) w *= 0.3; tot += w; return w; });
+      let tot = 0; const ws = items.map(u => { let w = UNIT_WEIGHTS[u.id] != null ? UNIT_WEIGHTS[u.id] : 1; if (this.g.time < 300 && u.cost > 1500) w *= 0.3; tot += w; return w; });
       let r = this.rng.next() * tot;
       for (let i = 0; i < items.length; i++) { r -= ws[i]; if (r <= 0) return items[i]; }
       return items[items.length - 1];
@@ -178,6 +184,14 @@
       const vq = p.queues.veh;
       if (p.has('factory') && harvs + vq.filter(i => i.def.harvester).length < wantH && vq.length < 3) p.enqueue(f + '_harv');
       if (!p.has('yard') && p.has('factory') && p.credits > 3500 && !myUnits.some(u => u.def.mcv) && !vq.some(i => i.def.mcv)) p.enqueue(f + '_mcv');
+      // Mobile Flugabwehr nach Bedarf
+      const enemyAir = this.g.units.reduce((n, u) => n + (!u.dead && u.isAir && this.g.hostile(u.owner, p) ? 1 : 0), 0);
+      if (enemyAir && p.has('factory') && vq.length < 3) {
+        const isFlak = (d) => d.id === f + '_flak';
+        const flaks = myUnits.filter(u => isFlak(u.def)).length + vq.filter(i => isFlak(i.def)).length;
+        if (flaks < Math.min(4, 1 + Math.floor(enemyAir / 2))) p.enqueue(f + '_flak');
+      }
+      if (this.saveFor && p.credits < this.saveFor) return; // für Spezialfähigkeit sparen
       const army = myUnits.filter(u => u.def.weapons.length).length;
       const cap = this.opts.armyCap || (this.level === 'easy' ? 25 : 60);
       if (army >= cap) return;
@@ -188,7 +202,7 @@
     }
     manageResearch() {
       const p = this.p;
-      if (!this.lv.research || p.queues.research.length || p.credits < 200 || this.g.time < 360) return;
+      if (!this.lv.research || p.queues.research.length || p.credits < 200 || this.g.time < 360 || this.saveFor) return;
       const opts = D.itemsFor(p.faction, 'research').filter(r => !p.researched.has(r.id) && p.reqMet(r));
       if (opts.length) p.enqueue(this.rng.pick(opts).id);
     }
@@ -239,8 +253,14 @@
         const cx = army.reduce((a, u) => a + u.x, 0) / army.length, cy = army.reduce((a, u) => a + u.y, 0) / army.length;
         const tgt = this.pickTarget(cx, cy);
         if (tgt) {
-          g.cmdMove(army, tgt.x, tgt.y, true);
-          this.attackGroup.push(...army);
+          // Auf niedrigen Stufen bleibt ein Teil der Armee als Verteidigung zurück
+          const capF = { easy: 1, normal: 1.6, hard: 3 }[this.level];
+          let wave = army;
+          if (capF && army.length > this.waveSize * capF) {
+            wave = army.slice().sort((a, b2) => U.dist2(a.x, a.y, tgt.x, tgt.y) - U.dist2(b2.x, b2.y, tgt.x, tgt.y)).slice(0, Math.ceil(this.waveSize * capF));
+          }
+          g.cmdMove(wave, tgt.x, tgt.y, true);
+          this.attackGroup.push(...wave);
           this.waveN++; this.waveSize = Math.min(26, this.waveSize + this.lv.waveGrow);
           this.nextAttack = g.time + (this.level === 'easy' ? 160 : this.level === 'normal' ? 120 : 90) * (0.8 + this.rng.next() * 0.4);
         }
@@ -260,6 +280,78 @@
         if (idle.length) g.cmdMove(idle, rx, ry, true);
       }
     }
+    // Notlage: ohne Raffinerie/Sammler und ohne Geld Gebäude verkaufen, um die Wirtschaft neu aufzubauen
+    manageRecovery(myUnits) {
+      const g = this.g, p = this.p;
+      const harv = myUnits.some(u => u.def.harvester) || p.queues.veh.some(i => i.def.harvester);
+      const refs = p.count('refinery');
+      // Raffinerie ohne Sammler und ohne Fabrik: eine neue Raffinerie bringt einen Sammler mit
+      this.noHarvesters = !harv && refs > 0 && !p.has('factory') && refs < 3;
+      if (!p.has('yard')) return;
+      let need = 0;
+      if (refs === 0 || this.noHarvesters) need = this.bdef('refinery').cost;
+      else if (!harv) need = D.UNITS[p.faction[0] + '_harv'].cost;
+      if (!need || p.credits >= need) return;
+      if (g.buildings.some(b => !b.dead && b.owner === p && b.def.income)) return; // Bohrer liefern noch Einnahmen
+      const order = ['tower_mg', 'tower_aa', 'tower_av', 'airfield', 'sw', 'tech', 'radar', 'barracks', 'factory'];
+      for (const role of order) {
+        const b = g.buildings.find(x => !x.dead && x.owner === p && x.def.role === role && x.built >= 1);
+        if (b) { g.sell(b); return; }
+      }
+    }
+    // Ingenieure erobern neutrale Gebäude in Reichweite der Basis
+    manageEngineers(myUnits) {
+      const g = this.g, p = this.p, base = this.base;
+      if (!base || this.opts.noProduce) return;
+      const neutrals = g.buildings.filter(b => !b.dead && b.owner.neutral);
+      if (!neutrals.length) return;
+      const engs = myUnits.filter(u => u.def.engineer);
+      const taken = new Set(engs.filter(u => u.order.type === 'capture').map(u => u.order.target));
+      const cands = neutrals.filter(b => !taken.has(b) && U.dist(b.x, b.y, base.x, base.y) < 48 * T)
+        .sort((a, b) => U.dist2(a.x, a.y, base.x, base.y) - U.dist2(b.x, b.y, base.x, base.y));
+      for (const e of engs) if (e.order.type !== 'capture') { const t = cands.shift(); if (t) g.cmdCapture([e], t); }
+      const easy = this.level === 'easy', q = p.queues.inf;
+      const have = engs.length + q.filter(i => i.def.engineer).length;
+      if (cands.length && g.time > (easy ? 300 : 110) && p.has('barracks') && have < Math.min(easy ? 1 : 2, cands.length) && p.credits > 600 && q.length < 3) p.enqueue(p.faction[0] + '_eng');
+    }
+    // Spezialfähigkeit der Fraktion (ab Stufe Normal). Bei Bedarf wird kurz dafür gespart.
+    managePowers(myUnits) {
+      this.saveFor = 0;
+      if (!this.lv.sw) return;
+      const g = this.g, p = this.p, m = g.map;
+      const id = { allianz: 'drop', schatten: 'emp', vael: 'heal' }[p.faction];
+      const st = g.powerState(p, id);
+      if (!st.available || !st.ready) return;
+      const cost = st.power.cost;
+      const use = (x, y) => { if (p.credits >= cost) g.usePower(p, id, x, y); else this.saveFor = cost + 50; };
+      if (id === 'heal') {
+        const hurt = myUnits.filter(u => u.def.weapons.length && u.hp < u.maxHp * 0.7);
+        if (hurt.length < 4) return;
+        const R = st.power.radius * T; let best = null, bn = 0;
+        for (const u of hurt) { let n = 0; for (const o of hurt) if (U.dist(u.x, u.y, o.x, o.y) < R) n++; if (n > bn) { bn = n; best = u; } }
+        if (bn >= 3) use(best.x, best.y);
+        return;
+      }
+      const grp = this.attackGroup;
+      const dropAt = (x, y) => { const t = m.nearestPassable(Math.floor(x / T), Math.floor(y / T), 0, 8); if (t) use((t.tx + 0.5) * T, (t.ty + 0.5) * T); };
+      if (grp.length >= 5) {
+        const cx = grp.reduce((a, u) => a + u.x, 0) / grp.length, cy = grp.reduce((a, u) => a + u.y, 0) / grp.length;
+        // EMP erst kurz vor dem Kontakt zünden, sonst verpufft er vor der Ankunft
+        let tgt = null, bd = (id === 'emp' ? 9 : 16) * T;
+        for (const b of g.buildings) {
+          if (b.dead || !g.hostile(p, b.owner)) continue;
+          let d = U.dist(cx, cy, b.x, b.y); if (id === 'emp' && b.def.weapons.length) d -= 3 * T;
+          if (d < bd) { bd = d; tgt = b; }
+        }
+        if (tgt) {
+          if (id === 'emp') use(tgt.x, tgt.y);
+          else { const a = Math.atan2(cy - tgt.y, cx - tgt.x); dropAt(tgt.x + Math.cos(a) * 4 * T, tgt.y + Math.sin(a) * 4 * T); }
+          return;
+        }
+      }
+      // Luftlandung zur Verteidigung der Basis
+      if (id === 'drop' && g.time - this.lastDefend < 4 && this.base) dropAt(this.base.x, this.base.y + 3 * T);
+    }
     manageSuperweapon() {
       const g = this.g, p = this.p;
       for (const b of g.buildings) {
@@ -274,5 +366,6 @@
       }
     }
   }
+  AI.UNIT_WEIGHTS = UNIT_WEIGHTS;
   RTS.AI = AI;
 })();

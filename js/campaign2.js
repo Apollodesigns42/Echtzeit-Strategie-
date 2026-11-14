@@ -2,8 +2,8 @@
 // ===== Kampagnen des Schattenkollektivs und der Vael =====
 (function () {
   const U = RTS.util, T = U.TILE;
-  const { autoPlace, base, squad, hasBuildings, hasUnits, say } = RTS.campaign.helpers;
-  const alive = (b) => b && !b.dead;
+  const { autoPlace, base, squad, hasBuildings, hasUnits, say, out } = RTS.campaign.helpers;
+  const alive = (b) => !out(b);
   const nearAny = (g, p, x, y, r) => g.units.some(u => !u.dead && u.owner === p && U.dist(u.x, u.y, x * T, y * T) < r * T);
   const SCH = (o) => Object.assign({ faction: 'schatten', human: true, color: '#ef4444', name: 'Schattenkollektiv' }, o);
   const VAE = (o) => Object.assign({ faction: 'vael', human: true, color: '#a855f7', name: 'Vael' }, o);
@@ -133,7 +133,7 @@
       },
       update(g) {
         const s = g.missionState, h = g.players[0];
-        const towersDown = s.towers.every(t => t.dead);
+        const towersDown = s.towers.every(out);
         if (!s.freed && towersDown && nearAny(g, h, 72, 70, 4)) {
           s.freed = true; h.credits += 3000;
           squad(g, h, [['s_militia', 6], ['s_flamer', 3], ['s_rocket', 2], ['s_tank', 1]], 72, 71);
@@ -142,7 +142,7 @@
         }
         if (!s.hint && towersDown && !s.freed) { s.hint = true; say(g, 'Die Wachtürme sind gefallen. Führt eine Einheit ins Lager!'); }
       },
-      objectives(g) { const s = g.missionState; return [{ text: 'Zerstöre die Wachtürme des Lagers', done: s.towers.every(t => t.dead) }, { text: 'Befreie die Gefangenen (Einheit ins Lager)', done: !!s.freed }, { text: 'Vernichte die Allianz-Basis', done: !hasBuildings(g, g.players[1]) }]; },
+      objectives(g) { const s = g.missionState; return [{ text: 'Zerstöre die Wachtürme des Lagers', done: s.towers.every(out) }, { text: 'Befreie die Gefangenen (Einheit ins Lager)', done: !!s.freed }, { text: 'Vernichte die Allianz-Basis', done: !hasBuildings(g, g.players[1]) }]; },
       check(g) { if (g.missionState.freed && !hasBuildings(g, g.players[1])) return 'win'; if (g.players[0].defeated) return 'lose'; return null; },
     },
     {
@@ -308,8 +308,8 @@
         g.missionState.posts = posts;
       },
       update(g) { const s = g.missionState; if (g.time % 25 < 1 / 30) for (const p of s.posts) if (alive(p)) g.alerts.push({ x: p.x, y: p.y, t: g.time }); },
-      objectives(g) { const p = g.missionState.posts; return [{ text: `Horchposten zerstören (${p.filter(x => x.dead).length}/${p.length})`, done: p.every(x => x.dead) }]; },
-      check(g) { if (g.missionState.posts.every(p => p.dead)) return 'win'; if (g.players[0].defeated) return 'lose'; return null; },
+      objectives(g) { const p = g.missionState.posts; return [{ text: `Horchposten zerstören (${p.filter(out).length}/${p.length})`, done: p.every(out) }]; },
+      check(g) { if (g.missionState.posts.every(out)) return 'win'; if (g.players[0].defeated) return 'lose'; return null; },
     },
     {
       id: 'v6', title: 'Kristallherz', sub: 'Die Welt gehört dem Schwarm',

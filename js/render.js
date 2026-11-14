@@ -57,15 +57,7 @@
       const ix = Math.max(0, Math.floor(vx0)), iy = Math.max(0, Math.floor(vy0));
       const iw = Math.min(m.w * T, Math.ceil(vx1)) - ix, ih = Math.min(m.h * T, Math.ceil(vy1)) - iy;
       if (iw > 0 && ih > 0) {
-        // Wasser nur im Bereich sichtbarer Wasserfelder (plus Uferrand)
-        let wx0 = 1e9, wy0 = 1e9, wx1 = -1, wy1 = -1;
-        const ttx0 = Math.max(0, Math.floor(ix / T) - 1), tty0 = Math.max(0, Math.floor(iy / T) - 1);
-        const ttx1 = Math.min(m.w - 1, Math.floor((ix + iw) / T) + 1), tty1 = Math.min(m.h - 1, Math.floor((iy + ih) / T) + 1);
-        for (let y = tty0; y <= tty1; y++) { const row = y * m.w; for (let x = ttx0; x <= ttx1; x++) if (m.type[row + x] === 2) { if (x < wx0) wx0 = x; if (x > wx1) wx1 = x; if (y < wy0) wy0 = y; if (y > wy1) wy1 = y; } }
-        if (wx1 >= 0) {
-          const ax = Math.max(ix, (wx0 - 1) * T), ay = Math.max(iy, (wy0 - 1) * T), bx = Math.min(ix + iw, (wx1 + 2) * T), by = Math.min(iy + ih, (wy1 + 2) * T);
-          this.drawWater(ctx, ax, ay, bx - ax, by - ay, t);
-        }
+        this.drawWater(ctx, ix, iy, iw, ih, t);
         ctx.drawImage(m.terrainCanvas, ix, iy, iw, ih, ix, iy, iw, ih);
       }
       const tx0 = Math.max(0, Math.floor(vx0 / T) - 1), ty0 = Math.max(0, Math.floor(vy0 / T) - 1);
@@ -99,6 +91,12 @@
       ground.sort((a, b) => a.y - b.y);
       for (const u of ground) if (u.selected) this.drawSelection(ctx, u, alpha);
       for (const u of ground) this.drawUnitEnt(ctx, u, alpha);
+      // Bonuskisten
+      for (const c of g.crates) {
+        if (!inView(c.x, c.y, 20)) continue;
+        if (human && !g.cfg.reveal && !vis[Math.floor(c.y / T) * m.w + Math.floor(c.x / T)]) continue;
+        DR.drawCrate(ctx, c.x, c.y, t);
+      }
       // Projektile
       for (const p of g.projectiles) {
         if (p.t < 0 || !inView(p.x, p.y, 20)) continue;
@@ -120,6 +118,30 @@
       this.drawEffects(ctx, inView);
       // Lufteinheiten
       for (const u of air) { if (u.selected) this.drawSelection(ctx, u, alpha); this.drawUnitEnt(ctx, u, alpha); }
+      // Luftlandung: Kapseln fallen auf das Zielgebiet
+      for (const d of g.pendingDrops) {
+        const f = 1 - d.t / d.max;
+        ctx.strokeStyle = 'rgba(147,197,253,0.8)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.ellipse(d.x, d.y, 2.5 * T, 2.5 * T * 0.7, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+        for (let i = 0; i < 5; i++) {
+          const a = i * 1.3, r = (0.6 + (i % 3) * 0.7) * T, px = d.x + Math.cos(a) * r, py = d.y + Math.sin(a) * r, hgt = (1 - Math.min(1, f + i * 0.03)) * 420;
+          ctx.fillStyle = 'rgba(0,0,0,' + (0.15 + f * 0.25) + ')'; ctx.beginPath(); ctx.ellipse(px, py, 5 + (1 - f) * 6, 3 + (1 - f) * 3, 0, 0, 7); ctx.fill();
+          if (hgt > 2) {
+            ctx.strokeStyle = 'rgba(255,220,160,0.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px, py - hgt); ctx.lineTo(px, py - hgt - 30); ctx.stroke();
+            ctx.fillStyle = '#cbd5e1'; ctx.beginPath(); ctx.ellipse(px, py - hgt, 4, 6, 0, 0, 7); ctx.fill();
+            ctx.fillStyle = d.owner.color; ctx.fillRect(px - 4, py - hgt - 1, 8, 2);
+          }
+        }
+      }
+      // Radarscans (eigenes Team)
+      if (human) for (const sc of g.scans) {
+        if (sc.team !== human.team) continue;
+        const left = sc.until - t;
+        ctx.save(); ctx.translate(sc.x, sc.y); ctx.rotate(t * 0.6);
+        ctx.strokeStyle = 'rgba(125,211,252,' + Math.min(0.6, left / 3) + ')'; ctx.lineWidth = 1.5; ctx.setLineDash([10, 8]);
+        ctx.beginPath(); ctx.arc(0, 0, sc.r * T, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+        ctx.restore();
+      }
       // Superwaffen-Anflug
       for (const s of g.pendingStrikes) {
         const f = 1 - s.t / s.max, R = s.sw.radius * T;
@@ -150,26 +172,42 @@
       }
       ctx.drawImage(this.vig.cv, 0, 0);
     }
+    // Wasser/Lava: nur auf Wasserfeldern samt Uferrand zeichnen (spart viel Füllfläche)
     drawWater(ctx, x, y, w, h, t) {
       const m = this.g.map, B = m.biome;
-      if (!this.waterPat) {
+      if (!this.waterNear) {
+        const wn = this.waterNear = new Uint8Array(m.w * m.h);
+        for (let ty = 0; ty < m.h; ty++) for (let tx = 0; tx < m.w; tx++) {
+          let near = 0;
+          for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = tx + dx, yy = ty + dy; if (xx >= 0 && yy >= 0 && xx < m.w && yy < m.h && m.type[yy * m.w + xx] === 2) { near = 1; break; } }
+          wn[ty * m.w + tx] = near;
+        }
         this.waterPat = ctx.createPattern(m.waterTex, 'repeat');
       }
-      ctx.fillStyle = B.water; ctx.fillRect(x, y, w, h);
-      // Tiefenverlauf
-      const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(255,255,255,0.04)'); g.addColorStop(1, 'rgba(0,0,0,0.12)');
-      ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
-      const lava = !!B.lava;
+      const wn = this.waterNear;
+      const tx0 = Math.max(0, Math.floor(x / T)), ty0 = Math.max(0, Math.floor(y / T)), tx1 = Math.min(m.w - 1, Math.floor((x + w) / T)), ty1 = Math.min(m.h - 1, Math.floor((y + h) / T));
+      ctx.beginPath(); let any = false;
+      for (let ty = ty0; ty <= ty1; ty++) {
+        const row = ty * m.w; let run = -1;
+        for (let tx = tx0; tx <= tx1 + 1; tx++) {
+          const on = tx <= tx1 && wn[row + tx];
+          if (on && run < 0) run = tx;
+          else if (!on && run >= 0) { ctx.rect(run * T, ty * T, (tx - run) * T, T); run = -1; any = true; }
+        }
+      }
+      if (!any) return;
+      const lava = !!B.lava, pat = this.waterPat;
+      ctx.fillStyle = B.water; ctx.fill();
+      ctx.save();
+      if (lava) ctx.globalCompositeOperation = 'lighter';
       for (let layer = 0; layer < 2; layer++) {
         const ox = (layer ? -t * 9 : t * 6) % 256, oy = (layer ? t * 4 : t * 7) % 256;
-        ctx.save();
-        ctx.translate(ox, oy);
-        if (layer) { ctx.globalCompositeOperation = lava ? 'lighter' : 'source-over'; ctx.globalAlpha = lava ? 0.55 : 0.5; }
-        else { ctx.globalAlpha = lava ? 0.8 : 0.7; if (lava) ctx.globalCompositeOperation = 'lighter'; }
-        ctx.fillStyle = this.waterPat; ctx.fillRect(x - ox, y - oy, w, h);
-        ctx.restore();
+        if (pat.setTransform) pat.setTransform(new DOMMatrix([1, 0, 0, 1, ox, oy]));
+        ctx.globalAlpha = lava ? (layer ? 0.55 : 0.8) : (layer ? 0.5 : 0.7);
+        ctx.fillStyle = pat; ctx.fill();
       }
-      if (lava) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.12 + 0.06 * Math.sin(t * 1.3); ctx.fillStyle = '#ff7a1a'; ctx.fillRect(x, y, w, h); ctx.restore(); }
+      if (lava) { ctx.globalAlpha = 0.12 + 0.06 * Math.sin(t * 1.3); ctx.fillStyle = '#ff7a1a'; ctx.fill(); }
+      ctx.restore();
     }
     drawEffects(ctx, inView) {
       const g = this.g, GX = RTS.gfx;
@@ -235,6 +273,15 @@
             ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.lineCap = 'butt';
             break;
           }
+          case 'ring': {
+            const r = e.r * (1 - f * f);
+            ctx.globalCompositeOperation = 'lighter';
+            if (e.fill) { ctx.globalAlpha = f * 0.22; ctx.fillStyle = e.c; ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, 7); ctx.fill(); }
+            ctx.globalAlpha = f; ctx.strokeStyle = e.c; ctx.lineWidth = 3 + f * 3;
+            ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, 7); ctx.stroke();
+            ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+            break;
+          }
           case 'text': {
             ctx.globalAlpha = Math.min(1, f * 2); ctx.fillStyle = e.c; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
             ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.strokeText(e.txt, e.x, e.y); ctx.fillText(e.txt, e.x, e.y); ctx.globalAlpha = 1;
@@ -272,6 +319,7 @@
       if (!b.powered && b.def.power < 0 && Math.sin(this.g.time * 6) > 0) {
         ctx.fillStyle = '#facc15'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('⚡', b.x, b.y);
       }
+      if (b.empUntil > this.g.time) this.drawSparks(ctx, b.x, b.y - 6, b.w * T * 0.45);
       if (b.repairing) { ctx.fillStyle = '#fde047'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('🔧', b.x, b.y - 4 + Math.sin(this.g.time * 4) * 2); }
       if (b.selected) {
         const w = b.w * T, h = b.h * T, c = 8;
@@ -294,12 +342,23 @@
       ctx.strokeStyle = u.owner === this.g.human ? 'rgba(134,239,172,0.9)' : 'rgba(252,165,165,0.9)'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.ellipse(x, y + 2, u.radius + 3, (u.radius + 3) * 0.6, 0, 0, 7); ctx.stroke();
     }
+    drawSparks(ctx, x, y, r) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = '#bfdbfe'; ctx.lineWidth = 1.2;
+      for (let i = 0; i < 3; i++) {
+        let px = x + (Math.random() - 0.5) * r * 2, py = y + (Math.random() - 0.5) * r * 1.4;
+        ctx.beginPath(); ctx.moveTo(px, py);
+        for (let k = 0; k < 3; k++) { px += (Math.random() - 0.5) * r * 0.9; py += (Math.random() - 0.5) * r * 0.9; ctx.lineTo(px, py); }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     drawUnitEnt(ctx, u, alpha) {
       const x = U.lerp(u.px, u.x, alpha), y = U.lerp(u.py, u.y, alpha);
       ctx.save(); ctx.translate(x, y);
       if (u.cloaked) ctx.globalAlpha = 0.35;
       DR.drawUnit(ctx, u.def, { color: u.owner.color, angle: u.angle, turret: u.turret, anim: u.anim, moving: u.moving, alt: u.alt, cargo: u.cargo / u.owner.mods.harvCap, recoil: U.clamp(1 - (this.g.time - u.lastFired) / 0.25, 0, 1) });
       ctx.restore();
+      if (u.empUntil > this.g.time) this.drawSparks(ctx, x, y - (u.alt || 0), u.radius);
     }
     drawHealth(ctx, x, y, w, f, e) {
       const h = 4;
@@ -338,6 +397,13 @@
         ctx.beginPath(); ctx.ellipse(mk.x, mk.y, 14 * (1 - f * 0.6), 8 * (1 - f * 0.6), 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
       }
       this.markers = this.markers.filter(mk => mk.t < 0.6);
+      // Zielmodus Spezialfähigkeit
+      if (ui.mode === 'power' && ui.powerId) {
+        const pw = RTS.data.POWERS[ui.powerId], w = ui.mouseWorld;
+        ctx.strokeStyle = pw.color; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
+        ctx.beginPath(); ctx.arc(w.x, w.y, pw.radius * T, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = pw.color; ctx.globalAlpha = 0.08; ctx.beginPath(); ctx.arc(w.x, w.y, pw.radius * T, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+      }
       // Zielmodus Superwaffe
       if (ui.mode === 'sw' && ui.swBuilding) {
         const R = g.human.fdef.sw.radius * T, w = ui.mouseWorld;

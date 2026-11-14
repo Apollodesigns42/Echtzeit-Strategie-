@@ -28,6 +28,8 @@
       this.start = null;
       this.lastAttackAlert = -99;
       this.cfgStart = cfg.start;
+      this.neutral = !!cfg.neutral;
+      this.powerReady = {};
       this.aiOpts = cfg.aiOpts || {};
     }
     get lowPower() { return this.power.use > this.power.prod; }
@@ -80,7 +82,7 @@
         const n = this.producerCount(tab); if (!n) continue;
         const speed = Math.min(2.5, 1 + 0.5 * (n - 1)) * (this.lowPower ? 0.5 : 1) * this.buildSpeed * (g.cfg.buildSpeed || 1);
         const cost = it.def.cost, time = it.def.time || 1;
-        let spend = Math.min(cost / time * speed * dt, cost - it.spent, this.credits);
+        let spend = Math.min(cost / time * speed * dt, cost - it.spent, this.credits - (this.reserve || 0)); // Reserve: von der KI zurückgelegtes Geld
         if (spend < 0) spend = 0;
         this.credits -= spend; it.spent += spend; this.stats.spent += spend;
         if (it.spent >= cost - 0.001) this.completeItem(tab, it);
@@ -133,10 +135,12 @@
       this.swTime = cfg.swTime || 300;
       this.techLimit = cfg.techLimit || null;
       this.map = new RTS.GameMap(cfg.map);
-      this.map.generate(cfg.numStarts || cfg.players.length, cfg.mapOpts || {});
+      this.map.generate(cfg.numStarts || cfg.players.length, Object.assign({ neutrals: !!cfg.neutrals && !cfg.mission }, cfg.mapOpts || {}));
       this.pf = new RTS.Pathfinder(this.map);
       this.players = cfg.players.map((p, i) => new Player(this, i, p));
       this.human = this.players.find(p => p.isHuman) || null;
+      // Neutraler Besitzer eroberbarer Gebäude (nimmt nicht am Spiel teil)
+      this.neutral = new Player(this, -1, { name: 'Neutral', faction: 'allianz', color: '#9aa3ad', team: -1, credits: 0, neutral: true });
       this.units = []; this.buildings = []; this.projectiles = []; this.effects = []; this.pathQueue = [];
       this.hashW = Math.ceil(this.map.w * T / CELL); this.hashH = Math.ceil(this.map.h * T / CELL);
       this.hash = new Array(this.hashW * this.hashH); for (let i = 0; i < this.hash.length; i++) this.hash[i] = [];
@@ -150,20 +154,27 @@
       this.missionState = {};
       this.ais = [];
       this.pendingStrikes = [];
+      this.crates = []; this.crateT = 25; this.cratePickT = 0;
+      this.scans = []; this.pendingDrops = [];
     }
     on(ev, fn) { (this.listeners[ev] = this.listeners[ev] || []).push(fn); }
     emit(ev, ...a) { (this.listeners[ev] || []).forEach(f => f(...a)); }
 
     init() {
-      // Startaufstellung
-      this.players.forEach((p, i) => {
-        const s = this.map.starts[p.cfgStart != null ? p.cfgStart : i] || this.map.starts[i % this.map.starts.length];
-        p.start = s;
-      });
+      this.assignStarts();
       if (this.mission && this.mission.setup) this.mission.setup(this);
       else {
         for (const p of this.players) this.setupStart(p, this.cfg.startUnits || 'standard');
+        for (const n of this.map.neutralSpots || []) this.placeBuilding(n.id, this.neutral, n.tx, n.ty, { instant: true });
       }
+      this.finishInit();
+    }
+    assignStarts() {
+      this.players.forEach((p, i) => {
+        p.start = this.map.starts[p.cfgStart != null ? p.cfgStart : i] || this.map.starts[i % this.map.starts.length];
+      });
+    }
+    finishInit() {
       for (const p of this.players) { p.recountRoles(); p.recalcPower(); }
       for (const p of this.players) if (p.aiLevel) this.ais.push(new RTS.AI(this, p, p.aiLevel));
       this.updateFog();
@@ -177,7 +188,7 @@
     }
 
     // ---- Hilfsfunktionen ----
-    hostile(a, b) { return a !== b && a.team !== b.team; }
+    hostile(a, b) { return a !== b && a.team !== b.team && !a.neutral && !b.neutral; }
     allied(a, b) { return a === b || a.team === b.team; }
     canSee(p, e) {
       if (this.allied(p, e.owner)) return true;
@@ -326,7 +337,7 @@
       return true;
     }
     sell(b) {
-      if (b.dead || b.built < 1) return;
+      if (b.dead || b.built < 1 || b.def.neutral) return;
       const refund = b.def.cost * 0.5 * (b.hp / b.maxHp);
       b.owner.credits += refund;
       this.fx({ k: 'text', x: b.x, y: b.y - 20, txt: '+' + Math.round(refund) + ' $', c: '#86efac', life: 1.5, max: 1.5 });
@@ -405,6 +416,9 @@
     }
     cmdDock(units, ref) {
       for (const u of units) if (u.isUnit && u.def.harvester) { u.order = { type: 'idle' }; u.dockRef = ref; u.hstate = 'return'; }
+    }
+    cmdCapture(units, b) {
+      for (const u of units) if (u.isUnit && u.def.engineer && !u.dead) { u.order = { type: 'capture', target: b, tries: 0 }; u.moveTo(b.x, b.y); }
     }
     cmdDeploy(units) {
       for (const u of units) if (u.isUnit && u.def.mcv) { u.order = { type: 'deploy' }; u.stopMove(); }
@@ -506,7 +520,7 @@
       });
     }
     damage(t, amount, wh, src) {
-      if (t.dead) return;
+      if (t.dead || t.owner.neutral) return;
       const arm = t.isBuilding ? 'bld' : t.def.armor;
       const mult = (D.WARHEADS[wh] || D.WARHEADS.bullet)[arm];
       if (!mult) return;
@@ -563,6 +577,165 @@
       }
       for (let i = 0; i < (big ? 8 : 3); i++) this.fx({ k: 'p', x: x + (Math.random() - 0.5) * r, y: y + (Math.random() - 0.5) * r, vx: (Math.random() - 0.5) * 15, vy: -15 - Math.random() * 15, life: 1.6 + Math.random(), max: 2.6, size: r * 0.4, grow: r * 0.8, c: 'rgba(50,45,40,0.5)', smoke: true });
       if (big) this.emit('shake', Math.min(10, r / 6));
+    }
+
+    // ---- Ingenieure & Eroberung ----
+    canCapture(u, b) {
+      if (!b || !b.isBuilding || b.dead || b.built < 1) return false;
+      if (b.owner.neutral) return true;
+      if (b.owner === u.owner) return b.hp < b.maxHp - 1;
+      return this.hostile(u.owner, b.owner) && b.hp < b.maxHp * 0.5;
+    }
+    engineerEnter(u, b) {
+      if (!this.canCapture(u, b)) return false;
+      u.dead = true; u.removed = true;
+      if (b.owner === u.owner) {
+        b.hp = b.maxHp;
+        this.fx({ k: 'text', x: b.x, y: b.y - 24, txt: 'Repariert', c: '#86efac', life: 1.6, max: 1.6 });
+        this.sound('sell', b.x, b.y);
+      } else this.capture(b, u.owner);
+      return true;
+    }
+    capture(b, p) {
+      const old = b.owner;
+      b.owner = p; b.target = null; b.repairing = false; b.rally = null; b.dockUser = null; b.empUntil = 0;
+      b.refreshHp();
+      if (b.hp < b.maxHp * 0.5) b.hp = b.maxHp * 0.5;
+      for (const k in old.primary) if (old.primary[k] === b.id) delete old.primary[k];
+      old.recountRoles(); old.recalcPower(); p.recountRoles(); p.recalcPower();
+      if (!old.neutral) {
+        old.stats.bldLost++;
+        if (!old.has('yard')) for (const tab of ['base', 'defense']) { const q = old.queues[tab]; for (const it of q) old.credits += it.spent; q.length = 0; }
+      }
+      p.stats.captured = (p.stats.captured || 0) + 1;
+      if (b.def.bonus && !b.bonusGiven) { b.bonusGiven = true; p.credits += b.def.bonus; this.fx({ k: 'text', x: b.x, y: b.y - 40, txt: '+' + b.def.bonus + ' $', c: '#86efac', life: 2, max: 2 }); }
+      this.fx({ k: 'text', x: b.x, y: b.y - 24, txt: 'Erobert!', c: '#fde047', life: 2, max: 2 });
+      this.fx({ k: 'ring', x: b.x, y: b.y, r: b.radius * 2, c: p.color, life: 0.8, max: 0.8 });
+      this.sound('capture', b.x, b.y);
+      if (p.isHuman) { b.seen = true; this.announce('captured', b.def.name + ' erobert', 'good', 1); }
+      else if (old.isHuman) { this.lastAlert = { x: b.x, y: b.y, t: this.time }; this.alerts.push({ x: b.x, y: b.y, t: this.time }); this.announce('capturedlost', 'Unser Gebäude wurde erobert: ' + b.def.name, 'alert', 1); }
+      this.map.oreVersion++;
+      this.emit('captured', b, old);
+    }
+
+    // ---- Spezialfähigkeiten ----
+    powerState(p, id) {
+      const pw = D.POWERS[id];
+      if (!pw || (pw.faction && pw.faction !== p.faction) || !p.has(pw.req)) return { available: false, ready: false, left: 0 };
+      const left = Math.max(0, (p.powerReady[id] || 0) - this.time);
+      return { available: true, ready: left <= 0, left, power: pw };
+    }
+    usePower(p, id, x, y) {
+      const st = this.powerState(p, id), pw = D.POWERS[id];
+      if (!st.available || !st.ready) return false;
+      const m = this.map, tx = Math.floor(x / T), ty = Math.floor(y / T);
+      if (!m.inBounds(tx, ty)) return false;
+      if (p.credits < pw.cost) { if (p.isHuman) this.announce('nocash', 'Unzureichende Mittel', 'warn', 2); return false; }
+      if (id === 'drop') {
+        const visOk = !p.isHuman || this.cfg.reveal || this.vis[ty * m.w + tx];
+        if (!visOk || !m.passable(tx, ty, 0)) { if (p.isHuman) this.announce('badtarget', 'Ziel muss sichtbar und begehbar sein', 'warn', 1); return false; }
+        this.pendingDrops.push({ x, y, t: 1.8, max: 1.8, owner: p, units: pw.units });
+      } else if (id === 'scan') {
+        this.scans.push({ x, y, r: pw.radius, until: this.time + pw.dur, team: p.team });
+        this.updateFog();
+      } else if (id === 'emp') {
+        const R = pw.radius * T;
+        this.queryRadius(x, y, R, (e) => {
+          if (e.dead || !this.hostile(p, e.owner)) return;
+          if (e.isUnit && e.def.cat === 'inf') return;
+          e.empUntil = this.time + pw.dur;
+          if (e.isUnit) { e.stopMove(); e.target = null; }
+          if (pw.dmg) { e.hp = Math.max(1, e.hp - pw.dmg * (e.isBuilding ? 2 : 1)); e.lastHit = this.time; }
+        });
+        this.fx({ k: 'ring', x, y, r: R, c: '#93c5fd', life: 0.9, max: 0.9, fill: true });
+        this.emit('shake', 6);
+      } else if (id === 'heal') {
+        const R = pw.radius * T;
+        this.queryRadius(x, y, R, (e) => {
+          if (e.dead || !this.allied(p, e.owner)) return;
+          const add = e.maxHp * (e.isBuilding ? 0.25 : 0.6);
+          if (e.hp < e.maxHp) { e.hp = Math.min(e.maxHp, e.hp + add); this.fx({ k: 'p', x: e.x, y: e.y - (e.alt || 0), vx: 0, vy: -22, life: 0.9, max: 0.9, size: 5, c: '#86efac', add: true }); }
+        });
+        this.fx({ k: 'ring', x, y, r: R, c: '#86efac', life: 1.1, max: 1.1, fill: true });
+      }
+      p.credits -= pw.cost; p.stats.spent += pw.cost;
+      p.powerReady[id] = this.time + pw.cd;
+      this.fx({ k: 'ring', x, y, r: pw.radius * T, c: pw.color, life: 0.7, max: 0.7 });
+      this.sound('power', x, y);
+      for (const o of this.players) if (o.isHuman && o !== p && this.hostile(o, p) && id !== 'scan' && (this.cfg.reveal || this.vis[ty * m.w + tx])) this.announce('enemypower', 'Feind setzt ' + pw.name + ' ein!', 'alert', 3);
+      this.emit('power', p, id, x, y);
+      return true;
+    }
+    updatePowers(dt) {
+      for (const d of this.pendingDrops) {
+        d.t -= dt;
+        if (d.t <= 0 && !d.done) {
+          d.done = true; let k = 0;
+          for (const [uid, n] of d.units) for (let i = 0; i < n; i++) {
+            const a = k * 1.3, r = (0.6 + (k % 3) * 0.7) * T; k++;
+            const u = this.spawnUnitNear(uid, d.owner, d.x + Math.cos(a) * r, d.y + Math.sin(a) * r);
+            if (u) { u.rank = 1; u.xp = u.def.cost; u.refreshHp(); u.hp = u.maxHp; this.fx({ k: 'p', x: u.x, y: u.y, vx: 0, vy: -8, life: 0.8, max: 0.8, size: 5, grow: 8, c: 'rgba(210,210,210,0.5)', smoke: true }); }
+          }
+          this.sound('place', d.x, d.y);
+        }
+      }
+      if (this.pendingDrops.length) this.pendingDrops = this.pendingDrops.filter(d => !d.done);
+      if (this.scans.length) this.scans = this.scans.filter(sc => sc.until > this.time);
+    }
+
+    // ---- Bonuskisten ----
+    spawnCrate() {
+      const m = this.map;
+      for (let k = 0; k < 30; k++) {
+        const tx = this.rng.int(3, m.w - 4), ty = this.rng.int(3, m.h - 4);
+        if (!m.passable(tx, ty, 0) || m.ore[m.idx(tx, ty)]) continue;
+        if (this.players.some(p => p.start && Math.hypot(p.start.tx - tx, p.start.ty - ty) < 10)) continue;
+        const x = (tx + 0.5) * T, y = (ty + 0.5) * T;
+        if (this.crates.some(c => U.dist(c.x, c.y, x, y) < 8 * T)) continue;
+        this.crates.push({ x, y, born: this.time });
+        return true;
+      }
+      return false;
+    }
+    updateCrates(dt) {
+      if (!this.cfg.crates || this.mission) return;
+      this.crateT -= dt;
+      if (this.crateT <= 0) { this.crateT = 30 + this.rng.next() * 25; if (this.crates.length < 6) this.spawnCrate(); }
+      this.cratePickT -= dt;
+      if (this.cratePickT > 0 || !this.crates.length) return;
+      this.cratePickT = 0.25;
+      for (const c of this.crates) {
+        let picker = null;
+        this.queryRadius(c.x, c.y, 6, (e) => { if (!picker && e.isUnit && !e.isAir && !e.dead && !e.owner.neutral && !e.owner.defeated) picker = e; });
+        if (picker) { c.taken = true; this.openCrate(c, picker); }
+      }
+      this.crates = this.crates.filter(c => !c.taken);
+    }
+    openCrate(c, u) {
+      const p = u.owner, r = this.rng.next();
+      let txt;
+      const credits = () => { const v = 500 + Math.floor(this.rng.next() * 6) * 200; p.credits += v; return '+' + v + ' Credits'; };
+      if (r < 0.45) txt = credits();
+      else if (r < 0.63) {
+        this.queryRadius(c.x, c.y, 6 * T, (e) => { if (e.isUnit && !e.dead && e.owner === p) e.hp = e.maxHp; });
+        this.fx({ k: 'ring', x: c.x, y: c.y, r: 6 * T, c: '#86efac', life: 0.9, max: 0.9, fill: true });
+        txt = 'Einheiten in der Nähe geheilt';
+      } else if (r < 0.79) {
+        if (u.def.weapons.length && u.rank < 3) { u.xp = Math.max(u.xp, u.def.cost * [1, 2.5, 5][u.rank]); u.addXp(0.01); txt = 'Beförderung!'; }
+        else txt = credits();
+      } else if (r < 0.91) {
+        const id = { allianz: 'a_tank', schatten: 's_tank', vael: 'v_prism' }[p.faction];
+        const n = this.spawnUnitNear(id, p, c.x, c.y);
+        txt = n ? 'Verstärkung: ' + n.def.name : credits();
+      } else if (p.isHuman && !this.cfg.reveal) {
+        this.scans.push({ x: c.x, y: c.y, r: 16, until: this.time + 25, team: p.team });
+        txt = 'Aufklärungsdaten: Gebiet aufgedeckt';
+      } else txt = credits();
+      this.fx({ k: 'text', x: c.x, y: c.y - 14, txt, c: '#fde047', life: 2.2, max: 2.2 });
+      this.fx({ k: 'flash', x: c.x, y: c.y, r: 16, life: 0.3, max: 0.3, c: '#fde047' });
+      this.sound('crate', c.x, c.y);
+      if (p.isHuman) this.message('Bonuskiste: ' + txt, 'good');
+      this.emit('crate', c, u, txt);
     }
 
     // ---- Superwaffen ----
@@ -627,6 +800,7 @@
       };
       for (const u of this.units) if (!u.dead && u.owner.team === team) mark(u.x, u.y, u.def.sight);
       for (const b of this.buildings) if (!b.dead && b.owner.team === team) mark(b.x, b.y, b.def.sight + Math.max(b.w, b.h) / 2);
+      for (const sc of this.scans) if (sc.team === team && sc.until > this.time) mark(sc.x, sc.y, sc.r);
       for (const b of this.buildings) if (!b.dead && !b.seen) {
         for (let y = b.ty; y < b.ty + b.h && !b.seen; y++) for (let x = b.tx; x < b.tx + b.w; x++) if (vis[y * w + x]) { b.seen = true; break; }
       }
@@ -638,6 +812,7 @@
         if (!u.isStealthy()) { u.cloaked = false; continue; }
         let det = false;
         this.queryRadius(u.x, u.y, 3.5 * T, (o) => { if (!det && !o.dead && this.hostile(o.owner, u.owner) && (o.isBuilding ? o.def.weapons.length || o.def.role === 'radar' : true)) det = true; });
+        if (!det) for (const sc of this.scans) if (sc.team !== u.owner.team && U.dist(u.x, u.y, sc.x, sc.y) < sc.r * T) { det = true; break; }
         u.cloaked = !det;
       }
     }
@@ -656,6 +831,8 @@
       for (const b of this.buildings) if (!b.dead) b.update(dt);
       this.updateProjectiles(dt);
       this.updateStrikes(dt);
+      this.updatePowers(dt);
+      this.updateCrates(dt);
       // Effekte
       for (const e of this.effects) {
         e.life -= dt;

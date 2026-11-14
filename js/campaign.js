@@ -30,6 +30,8 @@
     list.forEach(([id, n]) => { for (let i = 0; i < n; i++) { const u = g.spawnUnitNear(id, p, (x + U.clamp(i - n / 2, -3, 3) * 1.2) * T, (y + (out.length % 3)) * T); if (u) out.push(u); } });
     return out;
   }
+  // Missionsziel gilt als erledigt, wenn das Gebäude zerstört oder erobert wurde
+  const out = (b) => !b || b.dead || b.owner !== b.origOwner;
   const hasBuildings = (g, p) => g.buildings.some(b => !b.dead && b.owner === p);
   const hasUnits = (g, p) => g.units.some(u => !u.dead && u.owner === p && u.def.weapons.length);
   const say = (g, txt) => g.message(txt, 'mission');
@@ -140,10 +142,10 @@
       },
       update(g) {
         const t = g.missionState.target;
-        if (t && !t.dead && g.time % 20 < 1 / 30) g.alerts.push({ x: t.x, y: t.y, t: g.time });
+        if (!out(t) && g.time % 20 < 1 / 30) g.alerts.push({ x: t.x, y: t.y, t: g.time });
       },
-      objectives(g) { const t = g.missionState.target; return [{ text: 'Zerstöre das Geheimarchiv', done: !t || t.dead }, { text: 'Optional: Feindliche Basis vernichten', done: !hasBuildings(g, g.players[1]) }]; },
-      check(g) { const t = g.missionState.target; if (!t || t.dead) return 'win'; if (g.players[0].defeated) return 'lose'; return null; },
+      objectives(g) { const t = g.missionState.target; return [{ text: 'Zerstöre das Geheimarchiv', done: out(t) }, { text: 'Optional: Feindliche Basis vernichten', done: !hasBuildings(g, g.players[1]) }]; },
+      check(g) { const t = g.missionState.target; if (out(t)) return 'win'; if (g.players[0].defeated) return 'lose'; return null; },
     },
     {
       id: 'm5', title: 'Ankunft', sub: 'Vernichte die Vael-Invasoren',
@@ -163,7 +165,7 @@
         g.missionState.sw = vb.sw; if (vb.sw) vb.sw.seen = true;
         setTimeout(() => say(g, 'Der Rissgenerator der Vael lädt sich auf! Zerstören Sie ihn!'), 1000);
       },
-      objectives(g) { const s = g.missionState.sw; return [{ text: 'Zerstöre den Rissgenerator', done: !s || s.dead }, { text: 'Vernichte alle Vael-Gebäude', done: !hasBuildings(g, g.players[1]) }]; },
+      objectives(g) { const s = g.missionState.sw; return [{ text: 'Zerstöre den Rissgenerator', done: out(s) }, { text: 'Vernichte alle Vael-Gebäude', done: !hasBuildings(g, g.players[1]) }]; },
       check(g) { if (!hasBuildings(g, g.players[1])) return 'win'; if (g.players[0].defeated) return 'lose'; return null; },
     },
     {
@@ -206,5 +208,5 @@
   const CAMPAIGNS = [
     { id: 'allianz', faction: 'allianz', title: 'Operation Morgenröte', sub: 'Kampagne der Vereinigten Allianz', missions: MISSIONS },
   ];
-  RTS.campaign = { MISSIONS, CAMPAIGNS, buildConfig, LEVELS, helpers: { autoPlace, base, squad, hasBuildings, hasUnits, say, shiftLv } };
+  RTS.campaign = { MISSIONS, CAMPAIGNS, buildConfig, LEVELS, helpers: { autoPlace, base, squad, hasBuildings, hasUnits, say, shiftLv, out } };
 })();

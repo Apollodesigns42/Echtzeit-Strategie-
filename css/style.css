@@ -169,3 +169,26 @@ select, input[type=text] { background: #0d1114; color: var(--text); border: 1px 
 .spinner { width: 22px; height: 22px; border: 3px solid #2c353e; border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 #loading { z-index: 60; }
+#view.c-capture { cursor: alias; }
+.swi.power { opacity: .8; }
+.swi.power.pready { opacity: 1; box-shadow: 0 0 8px rgba(255,255,255,.12); }
+.swi.power.armed { border-color: #fff; box-shadow: 0 0 12px rgba(255,255,255,.4); }
+.swi.power:hover { border-color: #b7c3cf; }
+.load-info { font-size: 12px; color: var(--muted); margin: -4px 0 6px; text-align: center; }
+.camp-tabs.four { grid-template-columns: repeat(4, 1fr); }
+.codex-body { max-height: 62vh; overflow-y: auto; padding-right: 6px; }
+.codex-body h3 { margin-top: 18px; }
+.cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 8px; }
+.ccard { display: flex; gap: 10px; background: #0e1215; border: 1px solid #2c353e; padding: 8px; }
+.ccard canvas { width: 104px; height: 78px; flex: none; border: 1px solid #3a4550; }
+.cicon { width: 104px; height: 78px; flex: none; border: 1px solid; display: flex; align-items: center; justify-content: center; font-size: 38px; background: #12171c; }
+.ctext { min-width: 0; flex: 1; }
+.cn { font-weight: 800; color: #fff; font-size: 14px; }
+.cc { color: var(--accent); font-weight: 700; margin-left: 4px; }
+.cst { font-size: 11.5px; color: #93a0ad; margin-top: 2px; }
+.cd { font-size: 12.5px; color: #c6d0da; margin-top: 3px; line-height: 1.35; }
+.creq { color: #b6a26a; }
+.dps { display: grid; grid-template-columns: repeat(5, 1fr); font-size: 10px; text-align: center; margin-top: 5px; color: #7d8996; background: #090c0e; border: 1px solid #222a31; padding: 2px 0; }
+.dps b { display: block; font-size: 13px; color: var(--accent); }
+.cintro { border-left: 3px solid var(--accent); background: #0e1215; padding: 10px 12px; font-size: 13.5px; line-height: 1.5; color: #c6d0da; margin-top: 12px; }
+.ctable td, .ctable th { text-align: center; } .ctable td:first-child, .ctable th:first-child { text-align: left; }

@@ -17,6 +17,7 @@
       this.mmT = 0; this.sbT = 0; this.msgEls = [];
       const accent = { allianz: '#f5b301', schatten: '#ef4444', vael: '#c084fc' }[this.p.faction];
       document.documentElement.style.setProperty('--accent', accent);
+      for (const u of game.units) if (!u.dead && u.owner === this.p && u.group != null) (this.groups[u.group] = this.groups[u.group] || []).push(u);
       this.bindInput();
       this.buildTabs();
       this.buildItems();
@@ -93,7 +94,7 @@
       return g.buildings.some(b => !b.dead && b.owner === this.p && b.def.role === 'radar' && b.built >= 1 && b.powered);
     }
     setMode(m) {
-      this.mode = m; if (m !== 'place') this.placing = null;
+      this.mode = m; if (m !== 'place') this.placing = null; if (m !== 'power') this.powerId = null;
       $('tool-repair').classList.toggle('on', m === 'repair'); $('tool-sell').classList.toggle('on', m === 'sell');
     }
     viewPos(e) { const rc = this.view.getBoundingClientRect(); return { x: e.clientX - rc.left, y: e.clientY - rc.top }; }
@@ -132,6 +133,11 @@
         const tab = this.placing.tab;
         if (this.g.tryPlaceFromQueue(this.p, tab, this.placeTx, this.placeTy)) { this.setMode(null); this.updateSidebar(true); }
         else { this.g.announce('cantplace', 'Platzierung nicht möglich', 'warn', 1); RTS.audio && RTS.audio.play('error'); }
+        return;
+      }
+      if (this.mode === 'power' && this.powerId) {
+        if (this.g.usePower(this.p, this.powerId, w.x, w.y)) this.setMode(null);
+        else RTS.audio && RTS.audio.play('error');
         return;
       }
       if (this.mode === 'sw' && this.swBuilding) {
@@ -224,6 +230,12 @@
       const ent = this.entityAt(wx, wy);
       RTS.audio && RTS.audio.play('order');
       if (ent && g.hostile(this.p, ent.owner)) { g.cmdAttack(units, ent); this.r.addMarker(ent.x, ent.y, '#f87171'); return; }
+      const engs = units.filter(u => u.def.engineer);
+      if (engs.length && ent && ent.isBuilding && g.canCapture(engs[0], ent)) {
+        g.cmdCapture(engs, ent); this.r.addMarker(ent.x, ent.y, '#fde047');
+        units.splice(0, units.length, ...units.filter(u => !u.def.engineer));
+        if (!units.length) return;
+      }
       const harv = units.filter(u => u.def.harvester), rest = units.filter(u => !u.def.harvester);
       const tx = Math.floor(wx / T), ty = Math.floor(wy / T);
       if (harv.length) {
@@ -234,6 +246,7 @@
       if (rest.length) g.cmdMove(rest, wx, wy, forceAttack);
       this.r.addMarker(wx, wy, forceAttack ? '#f87171' : '#86efac');
     }
+    engineerCan(b) { const e = this.selection.find(u => u.isUnit && u.def.engineer && u.owner === this.p && !u.dead); return !!e && this.g.canCapture(e, b); }
     select(list) {
       for (const e of this.selection) e.selected = false;
       this.selection = list.filter(e => !e.dead);
@@ -288,6 +301,8 @@
         case 'w': { const u = this.ownUnits()[0]; if (u) this.selectSameTypeOnScreen(u.def.id); break; }
         case 'h': { const b = this.g.buildings.find(b => !b.dead && b.owner === this.p && b.def.role === 'yard') || this.g.buildings.find(b => !b.dead && b.owner === this.p) || this.g.units.find(u => !u.dead && u.owner === this.p); if (b) this.r.centerOn(b.x, b.y); break; }
         case ' ': e.preventDefault(); if (this.g.lastAlert) this.r.centerOn(this.g.lastAlert.x, this.g.lastAlert.y); break;
+        case 'f': this.armPower('scan'); break;
+        case 'g': this.armPower({ allianz: 'drop', schatten: 'emp', vael: 'heal' }[this.p.faction]); break;
         case 'r': this.setMode(this.mode === 'repair' ? null : 'repair'); break;
         case 'x': this.setMode(this.mode === 'sell' ? null : 'sell'); break;
         case '+': this.app.changeSpeed(1); break;
@@ -315,10 +330,11 @@
       this.hover = this.mouse.inView ? this.entityAt(this.mouseWorld.x, this.mouseWorld.y) : null;
       let c = '';
       if (this.mode === 'place') c = 'c-place';
-      else if (this.mode === 'sw' || this.mode === 'amove') c = 'c-sw';
+      else if (this.mode === 'sw' || this.mode === 'amove' || this.mode === 'power') c = 'c-sw';
       else if (this.mode === 'sell') c = 'c-sell';
       else if (this.mode === 'repair') c = 'c-repair';
       else if (this.rdrag && this.rdrag.moved) c = 'c-pan';
+      else if (this.hover && this.hover.isBuilding && this.engineerCan(this.hover)) c = 'c-capture';
       else if (this.hover && this.g.hostile(this.p, this.hover.owner) && this.ownUnits().length) c = 'c-attack';
       else if (this.hover) c = 'c-move';
       if (this.view.className !== c) this.view.className = c;
@@ -443,12 +459,27 @@
       if (force || this.selection.length) this.updateSelInfo();
       this.updateObjectives();
     }
+    armPower(id) {
+      const st = this.g.powerState(this.p, id);
+      if (!st.available) return;
+      if (!st.ready) { RTS.audio && RTS.audio.play('error'); return; }
+      if (this.p.credits < st.power.cost) { this.g.announce('nocash', 'Unzureichende Mittel', 'warn', 2); RTS.audio && RTS.audio.play('error'); return; }
+      this.setMode('power'); this.powerId = id; RTS.audio && RTS.audio.play('click');
+    }
     updateSwPanel() {
       const g = this.g, box = $('swpanel');
-      const sws = g.buildings.filter(b => !b.dead && b.def.sw && b.built >= 1 && (b.owner === this.p || b.seen || g.allied(this.p, b.owner) || true));
-      const key = sws.map(b => b.id).join(',');
+      const powers = D.powersFor(this.p.faction).filter(pw => g.powerState(this.p, pw.id).available);
+      const sws = g.cfg.superweapons === false ? [] : g.buildings.filter(b => !b.dead && b.def.sw && b.built >= 1);
+      const key = powers.map(pw => pw.id).join(',') + '|' + sws.map(b => b.id + ':' + b.owner.id).join(',');
       if (this.swKey !== key) {
         this.swKey = key; box.innerHTML = ''; this.swEls = [];
+        for (const pw of powers) {
+          const el = document.createElement('div'); el.className = 'swi mine power';
+          el.style.borderLeftColor = pw.color; el.title = pw.desc;
+          el.innerHTML = `<div class="nm"></div><div class="bar"><div style="background:${pw.color}"></div></div>`;
+          this.on(el, 'click', () => this.armPower(pw.id));
+          box.appendChild(el); this.swEls.push({ pw, el });
+        }
         for (const b of sws) {
           const el = document.createElement('div'); const mine = b.owner === this.p;
           el.className = 'swi ' + (mine ? 'mine' : g.allied(this.p, b.owner) ? '' : 'enemy');
@@ -457,7 +488,14 @@
           box.appendChild(el); this.swEls.push({ b, el });
         }
       }
-      for (const { b, el } of this.swEls) {
+      for (const { b, pw, el } of this.swEls) {
+        if (pw) {
+          const st = g.powerState(this.p, pw.id), f = 1 - st.left / pw.cd;
+          el.querySelector('.nm').textContent = `[${pw.key}] ${pw.name} · $${pw.cost}` + (st.ready ? '' : ' – ' + U.fmtTime(st.left));
+          el.querySelector('.bar div').style.width = (f * 100) + '%';
+          el.classList.toggle('pready', st.ready); el.classList.toggle('armed', this.mode === 'power' && this.powerId === pw.id);
+          continue;
+        }
         const f = b.charge / g.swTime, rem = g.swTime - b.charge;
         el.querySelector('.nm').textContent = (b.owner === this.p ? '' : b.owner.name + ': ') + b.owner.fdef.sw.name + ' – ' + (f >= 1 ? (b.owner === this.p ? 'BEREIT (klicken)' : 'BEREIT') : U.fmtTime(rem));
         el.querySelector('.bar div').style.width = (f * 100) + '%';
@@ -501,6 +539,9 @@
           if (e.isBuilding && e.def.power) t += ' · Energie: ' + (e.def.power > 0 ? '+' : '') + e.def.power;
           if (e.isBuilding && e.def.sw) t += ' · ' + Math.floor(e.charge / g.swTime * 100) + '%';
           if (e.isUnit && e.cloaked) t += ' · getarnt';
+          if (e.empUntil > g.time) t += ' · lahmgelegt';
+          if (e.isBuilding && e.def.income) t += e.owner.neutral ? ' · neutral – mit Ingenieur erobern' : ' · +' + e.def.income * 30 + ' $/min';
+          if (e.isBuilding && e.def.role === 'outpost' && e.owner.neutral) t += ' · neutral – mit Ingenieur erobern';
           dyn.textContent = t;
         };
         this.selDyn();

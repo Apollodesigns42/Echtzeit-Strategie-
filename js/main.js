@@ -19,9 +19,14 @@
       }));
       RTS.audio.setVolume(this.settings.volume); RTS.audio.voiceOn = this.settings.voice; RTS.audio.musicOn = this.settings.music;
       this.initSettings(); this.initSkirmish(); this.initCampaign(); this.initMenuBg();
+      RTS.codex.init();
+      $('btn-load').onclick = () => { RTS.audio.init(); this.loadGame(); };
+      $('pz-save').onclick = () => this.saveGame();
+      $('pz-load').onclick = () => { this.pause(false); this.loadGame(); };
+      this.updateLoadButton();
       $('pz-resume').onclick = () => this.pause(false);
       $('pz-restart').onclick = () => { this.pause(false); this.startGame(this.lastCfg, this.lastMeta); };
-      $('pz-quit').onclick = () => { this.pause(false); this.stopGame(); this.show(this.lastMeta && this.lastMeta.mission ? 'campaign' : 'menu'); };
+      $('pz-quit').onclick = () => { this.pause(false); this.stopGame(); this.show(this.lastMeta && this.lastMeta.mode === 'campaign' ? 'campaign' : 'menu'); };
       $('pz-vol').oninput = (e) => { this.settings.volume = +e.target.value; RTS.audio.setVolume(this.settings.volume); this.saveSettings(); };
       window.addEventListener('beforeunload', () => this.saveSettings());
       // Debug/Test-Schnittstelle
@@ -38,6 +43,8 @@
       if (name !== 'game') document.documentElement.style.setProperty('--accent', '#f5b301');
       this.screen = name;
       if (name === 'campaign') this.renderMissionList();
+      if (name === 'menu') this.updateLoadButton();
+      if (name === 'codex') RTS.codex.render();
       if (name === 'skirmish') this.updatePreview();
     },
 
@@ -136,7 +143,7 @@
         return { name, faction: fac, color: s.color, team: s.team ? s.team : 0, start, human: s.type === 'human', ai: s.type === 'human' ? null : s.type, credits: +$('sk-credits').value };
       });
       players.forEach((p, i) => { if (!p.team) p.team = 100 + i; });
-      const cfg = { map, players, numStarts: 4, gameSpeed: +$('sk-speed').value, superweapons: $('sk-sw').checked, reveal: $('sk-reveal').checked, startUnits: $('sk-start').value };
+      const cfg = { map, players, numStarts: 4, gameSpeed: +$('sk-speed').value, superweapons: $('sk-sw').checked, reveal: $('sk-reveal').checked, startUnits: $('sk-start').value, neutrals: $('sk-neutral').checked, crates: $('sk-crates').checked };
       this.startGame(cfg, { mode: 'skirmish' });
     },
     quickSkirmish(q) {
@@ -146,7 +153,7 @@
       for (let i = 0; i < n; i++) players.push({ name: 'Bot ' + (i + 1), faction: facs[i + 1], color: D.PLAYER_COLORS[i + 1].hex, team: 100 + i, start: i + 1, ai: q.get('level') || 'normal', credits: 10000 });
       if (q.has('autoplay')) players[0].ai = q.get('level') || 'normal';
       const md = RTS.MAPS[+(q.get('map') || 0)];
-      this.startGame({ map: Object.assign({}, md, { seed: md.seed || 99 }), players, numStarts: 4, gameSpeed: 1, superweapons: true, reveal: q.has('reveal'), startUnits: 'standard' }, { mode: 'skirmish' });
+      this.startGame({ map: Object.assign({}, md, { seed: md.seed || 99 }), players, numStarts: 4, gameSpeed: 1, superweapons: true, reveal: q.has('reveal'), startUnits: 'standard', neutrals: true, crates: true }, { mode: 'skirmish' });
     },
 
     // ---------- Kampagne ----------
@@ -156,7 +163,7 @@
         const m = this.missions()[this.selMission];
         if (!this.missionUnlocked(this.selMission)) return;
         const cfg = RTS.campaign.buildConfig(m, $('camp-diff').value);
-        this.startGame(cfg, { mode: 'campaign', camp: this.selCamp, mission: this.selMission });
+        this.startGame(cfg, { mode: 'campaign', camp: this.selCamp, mission: this.selMission, diff: $('camp-diff').value });
       };
     },
     missions(ci) { return RTS.campaign.CAMPAIGNS[ci == null ? this.selCamp : ci].missions; },
@@ -191,7 +198,31 @@
     },
 
     // ---------- Spielablauf ----------
-    startGame(cfg, meta) {
+    // ---------- Speichern / Laden ----------
+    updateLoadButton() {
+      const d = RTS.save.read();
+      $('btn-load').classList.toggle('hidden', !d); $('load-info').classList.toggle('hidden', !d);
+      const txt = d ? RTS.save.describe(d) : 'Kein Spielstand vorhanden';
+      $('load-info').textContent = txt; $('pz-info').textContent = txt;
+      $('pz-load').disabled = !d; $('pz-load').style.opacity = d ? 1 : 0.4;
+    },
+    saveGame() {
+      const g = this.game; if (!g || g.over) return;
+      const m = this.lastMeta, cam = this.renderer.cam;
+      const meta = { mode: m.mode, camp: m.camp, mission: m.mission, diff: m.diff, speed: this.speed, cam: { x: cam.x, y: cam.y, zoom: cam.zoom } };
+      const ok = RTS.save.write(RTS.save.serialize(g, meta));
+      this.updateLoadButton();
+      this.pause(false);
+      g.message(ok ? 'Spiel gespeichert' : 'Speichern fehlgeschlagen (Browser-Speicher voll oder gesperrt)', ok ? 'good' : 'alert');
+    },
+    loadGame() {
+      const d = RTS.save.read(); if (!d) return;
+      let cfg;
+      try { cfg = RTS.save.configFor(d); } catch (e) { alert('Der Spielstand konnte nicht geladen werden.'); return; }
+      this.startGame(cfg, { mode: d.meta.mode, camp: d.meta.camp, mission: d.meta.mission, diff: d.meta.diff }, d);
+    },
+
+    startGame(cfg, meta, saveData) {
       this.stopGame();
       this.lastCfg = cfg; this.lastMeta = meta;
       document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -200,11 +231,14 @@
       // Ladebildschirm, dann aufbauen (Geländeberechnung dauert einen Moment)
       if (!meta._loaded) {
         $('loading').classList.remove('hidden');
-        requestAnimationFrame(() => setTimeout(() => { meta._loaded = true; try { this.startGame(cfg, meta); } finally { meta._loaded = false; $('loading').classList.add('hidden'); } }, 30));
+        requestAnimationFrame(() => setTimeout(() => { meta._loaded = true; try { this.startGame(cfg, meta, saveData); } finally { meta._loaded = false; $('loading').classList.add('hidden'); } }, 30));
         return;
       }
-      const game = new RTS.Game(cfg);
-      game.init();
+      let game;
+      if (saveData) {
+        try { game = RTS.save.restore(saveData); }
+        catch (e) { console.error(e); alert('Der Spielstand konnte nicht geladen werden.'); this.show('menu'); return; }
+      } else { game = new RTS.Game(cfg); game.init(); }
       game.map.renderTerrain();
       const renderer = new RTS.Renderer($('view'), game);
       const hud = new RTS.HUD(game, renderer, this);
@@ -214,6 +248,11 @@
       const s = hp.start || game.map.starts[0];
       const first = game.buildings.find(b => b.owner === hp) || game.units.find(u => u.owner === hp);
       if (first) renderer.centerOn(first.x, first.y); else renderer.centerOn((s.tx + 0.5) * T, (s.ty + 0.5) * T);
+      if (saveData) {
+        if (saveData.meta.speed) { this.speed = saveData.meta.speed; this.updateSpeedInd(); }
+        const c = saveData.meta.cam; if (c) { renderer.cam.zoom = c.zoom; renderer.cam.x = c.x; renderer.cam.y = c.y; renderer.clampCam(); }
+        game.message('Spielstand geladen', 'good');
+      }
       game.on('gameOver', (r) => setTimeout(() => this.showEnd(r), 2200));
       RTS.audio.init(); if (this.settings.music) RTS.audio.startMusic();
       this.acc = 0; this.last = performance.now();

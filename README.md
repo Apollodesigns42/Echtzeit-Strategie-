@@ -18,7 +18,10 @@ Optimiert für den PC mit Maus und Tastatur (empfohlen: mind. 1280×720).
   - *Aus der Asche* (Schattenkollektiv): Tarnüberfall, Untergrundbasis, Konvoi-Hinterhalt, Gefangenenbefreiung, Bündnis mit den Vael, Verrat in der letzten Schlacht.
   - *Der Ruf des Kristalls* (Vael): Erwachen am Riss, Nexus-Aufbau, Kristallit-Sammelziel unter Beschuss, Schutz des Rissgenerators, verteilte Horchposten auf der Seenplatte, Kampf gegen beide Menschenfraktionen.
 - **Gefecht gegen Bots** – du gegen 1 bis 3 Bots (Leicht / Normal / Schwer / Brutal), frei wählbare Fraktion, Farbe, Teams und Startposition,
-  6 Karten (inkl. Zufallskarte) in 4 Klimazonen, Optionen für Startkapital, Spieltempo, Superwaffen und aufgedeckte Karte.
+  9 Karten (inkl. zweier vollständig gespiegelter Turnierkarten und einer Zufallskarte) in 4 Klimazonen, Optionen für Startkapital,
+  Spieltempo, Superwaffen, neutrale Gebäude, Bonuskisten und aufgedeckte Karte.
+- **Speichern und Laden** – ein Spielstand (Gefecht oder Kampagnenmission) lässt sich im Pausenmenü sichern und im Hauptmenü fortsetzen.
+- **Kompendium** – Nachschlagewerk im Hauptmenü mit allen Einheiten, Gebäuden, Forschungen, Fähigkeiten und der Schadenstabelle.
 
 ## Fraktionen
 
@@ -28,10 +31,19 @@ Optimiert für den PC mit Maus und Tastatur (empfohlen: mind. 1280×720).
 | **Schattenkollektiv** | schnell, getarnt, Flammen & Laser | +10 % Tempo, getarnte Phantom-Panzer, Tarnfeld-Forschung | Ascheregen |
 | **Die Vael** (Aliens) | Schwärme, Schwebeeinheiten | Regeneration aller Einheiten, Schweber überqueren Wasser/Lava | Dimensionsriss |
 
-Jede Fraktion hat 12 Gebäude (Basis + Verteidigung), 9 Einheiten (Infanterie, Fahrzeuge, Artillerie, Elite-Einheit, Luft, Sammler, Bau-Fahrzeug)
-und 6 Forschungen. Schadensarten (MG, Kanone, Rakete, Flamme, Laser, Säure, Artillerie, Flak) wirken unterschiedlich gegen
+Jede Fraktion hat 12 Gebäude (Basis + Verteidigung), 11 bis 12 Einheiten (Infanterie, Ingenieur, Fahrzeuge, mobile Flak, Artillerie,
+Elite-Einheit, Luft, Sammler, Bau-Fahrzeug), 6 Forschungen und zwei Spezialfähigkeiten. Schadensarten (MG, Kanone, Rakete, Flamme, Laser, Säure, Artillerie, Flak) wirken unterschiedlich gegen
 Infanterie, leichte/schwere Fahrzeuge, Luft und Gebäude. Einheiten sammeln Erfahrung (bis zu 3 ★).
 Schwere Fahrzeuge überrollen feindliche Infanterie; Gruppen mit Angriffsbefehl bewegen sich im Tempo der langsamsten Einheit.
+
+### Weitere Spielelemente
+
+- **Ingenieure** erobern neutrale Gebäude sofort und feindliche Gebäude, sobald deren Struktur unter 50 % liegt; eigene Gebäude reparieren sie vollständig.
+- **Neutrale Gebäude:** *Kristallbohrer* (500 Credits bei Eroberung, danach laufende Einnahmen) und *Beobachtungsposten* (große Sichtweite).
+  Beide erweitern den Baubereich und ermöglichen vorgeschobene Basen.
+- **Spezialfähigkeiten** (Leiste unten links, Tasten F und G): *Radarscan* für alle, dazu *Luftlandung* (Allianz), *EMP-Schlag* (Schatten)
+  und *Symbiosewelle* (Vael). Die Bots setzen sie ebenfalls ein.
+- **Bonuskisten** erscheinen im Gefecht zufällig: Credits, Heilung, Beförderung, Verstärkung oder Aufklärung.
 
 ## Balancing
 
@@ -41,7 +53,19 @@ Das Balancing wurde automatisiert geprüft:
 - **Gemischte Armeen:** typische KI-Zusammensetzungen je Fraktion im offenen Feld.
 - **Komplette Partien:** KI gegen KI (Schwer und Normal), alle Fraktionspaarungen, beide Startpositionen, drei Karten.
 
-Ergebnisse und Werte stehen in `js/data.js`; Siegquoten der Fraktionen liegen jeweils grob zwischen 40 und 60 %.
+Die Werte stehen in `js/data.js`; die Siegquoten der Fraktionen liegen jeweils grob zwischen 40 und 60 %.
+
+## Tests und Werkzeuge
+
+Die Spiellogik läuft auch ohne Browser (Node.js, keine Abhängigkeiten):
+
+```
+node tools/test.js            # Rauchtests: Gefechte, alle 18 Missionen, Speichern/Laden
+node tools/test.js schnell    # verkürzte Variante
+node tools/balance.js duell   # kostengleiche Duelle aller Bodeneinheiten
+node tools/balance.js armee   # typische gemischte Armeen
+node tools/balance.js partien hard 4   # komplette Partien KI gegen KI (4 parallele Läufe)
+```
 
 ## Steuerung
 
@@ -59,6 +83,7 @@ Ergebnisse und Werte stehen in `js/data.js`; Siegquoten der Fraktionen liegen je
 | Strg + 1–9 / 1–9 | Gruppe speichern / wählen (2× = Kamera) |
 | **H** / Leertaste | Zur Basis / zur letzten Meldung |
 | **R** / **X** | Reparieren / Verkaufen |
+| **F** / **G** | Radarscan / Spezialfähigkeit der Fraktion |
 | Tab | Nächste Bauleiste |
 | + / − | Spieltempo |
 | Esc | Pause bzw. Modus abbrechen |
@@ -78,6 +103,9 @@ Reines HTML5-Canvas + JavaScript (keine Abhängigkeiten):
 - `js/gfx.js` – Grafik-Grundbausteine (Sprite-Cache, Materialien, weiche Schatten, Explosions- und Rauch-Sprites)
 - `js/draw.js`, `js/render.js` – detaillierte prozedurale Einheiten-/Gebäudegrafik (in 2–4-facher Auflösung vorgerendert), Gelände, animiertes Wasser/Lava, Effekte
 - `js/hud.js` – Seitenleiste, Minikarte, Eingabe
+- `js/save.js` – Speichern und Laden von Spielständen
+- `js/codex.js` – Kompendium
+- `tools/` – Tests und Balancing-Analysen für Node.js
 - `js/campaign.js`, `js/campaign2.js` – Kampagnen (Allianz bzw. Schattenkollektiv und Vael)
 - `js/audio.js` – synthetisierte Soundeffekte, Musik und Sprachansagen (Web Audio / Sprachausgabe des Browsers)
 
